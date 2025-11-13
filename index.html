@@ -62,7 +62,10 @@
 
         input[type="text"],
         input[type="date"],
-        input[type="time"] {
+        input[type="time"],
+        input[type="password"],
+        input[type="url"],
+        select {
             width: 100%;
             padding: 12px 15px;
             border: 2px solid #e0e0e0;
@@ -71,9 +74,45 @@
             transition: border-color 0.3s;
         }
 
-        input:focus {
+        input:focus,
+        select:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        select {
+            cursor: pointer;
+            background-color: white;
+        }
+
+        .api-config-section {
+            margin: 30px 0;
+            padding: 25px;
+            background: #f0f4ff;
+            border-radius: 10px;
+            border: 2px dashed #667eea;
+        }
+
+        .api-config-section h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .hint {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e0e0e0;
+            margin: 30px 0;
         }
 
         .btn {
@@ -239,6 +278,43 @@
                 <div class="form-group">
                     <label for="birthtime">出生时间</label>
                     <input type="time" id="birthtime" name="birthtime" required>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="api-config-section">
+                    <h3>🤖 AI 配置</h3>
+
+                    <div class="form-group">
+                        <label for="apiProvider">AI 服务提供商</label>
+                        <select id="apiProvider" name="apiProvider" required>
+                            <option value="deepseek">DeepSeek（推荐，价格实惠）</option>
+                            <option value="openai">OpenAI (ChatGPT)</option>
+                            <option value="custom">自定义 API</option>
+                        </select>
+                        <p class="hint">选择用于命理分析的 AI 服务</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="apiKey">API Key</label>
+                        <input type="password" id="apiKey" name="apiKey" required placeholder="请输入您的 API Key">
+                        <p class="hint">
+                            DeepSeek: <a href="https://platform.deepseek.com/" target="_blank">获取 API Key</a> |
+                            OpenAI: <a href="https://platform.openai.com/" target="_blank">获取 API Key</a>
+                        </p>
+                    </div>
+
+                    <div class="form-group hidden" id="customApiUrlGroup">
+                        <label for="customApiUrl">自定义 API URL</label>
+                        <input type="url" id="customApiUrl" name="customApiUrl" placeholder="https://api.example.com/v1/chat/completions">
+                        <p class="hint">仅在选择"自定义 API"时需要填写，需兼容 OpenAI API 格式</p>
+                    </div>
+
+                    <div class="form-group hidden" id="customModelGroup">
+                        <label for="customModel">自定义模型名称</label>
+                        <input type="text" id="customModel" name="customModel" placeholder="例如: gpt-3.5-turbo">
+                        <p class="hint">仅在选择"自定义 API"时需要填写</p>
+                    </div>
                 </div>
 
                 <button type="submit" class="btn" id="submitBtn">开始分析命理</button>
