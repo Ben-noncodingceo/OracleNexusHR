@@ -1,13 +1,11 @@
 /**
  * 八字命理分析系统 - 后端服务器
- * 支持 DeepSeek API 和 ChatGPT API
+ * 完全由 AI 进行命理运算和分析
  */
 
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const BaziCalculator = require('./bazi-calculator.js');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,54 +15,70 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// 实例化八字计算器
-const baziCalc = new BaziCalculator();
-
 /**
- * 调用 AI API 获取命理建议
+ * 调用 AI API 进行完整的命理分析
  */
-async function getAIAdvice(baziInfo, apiType = 'deepseek') {
-    const apiKey = apiType === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
-    const apiUrl = apiType === 'deepseek'
-        ? 'https://api.deepseek.com/v1/chat/completions'
-        : 'https://api.openai.com/v1/chat/completions';
+async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
+    const { apiProvider, apiKey, customApiUrl, customModel } = apiConfig;
 
-    const model = apiType === 'deepseek' ? 'deepseek-chat' : 'gpt-4o-mini';
+    // 确定 API URL 和模型
+    let apiUrl, model;
 
-    if (!apiKey) {
-        throw new Error(`${apiType.toUpperCase()} API key not configured`);
+    if (apiProvider === 'deepseek') {
+        apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+        model = 'deepseek-chat';
+    } else if (apiProvider === 'openai') {
+        apiUrl = 'https://api.openai.com/v1/chat/completions';
+        model = 'gpt-4o-mini';
+    } else if (apiProvider === 'custom') {
+        apiUrl = customApiUrl;
+        model = customModel;
+    } else {
+        throw new Error('不支持的 API 提供商');
     }
 
-    // 构建五行信息
-    const wuxingInfo = Object.entries(baziInfo.wuXing)
-        .map(([element, count]) => `${element}: ${count}`)
-        .join(', ');
+    if (!apiKey) {
+        throw new Error('API Key 未提供');
+    }
 
-    const prompt = `你是一位专业的命理大师。请根据以下八字信息提供命理分析和建议：
+    // 构建 AI 提示词
+    const prompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学和月相学。
 
-【基本信息】
-八字: ${baziInfo.fullBazi}
-年柱: ${baziInfo.yearPillar}
-月柱: ${baziInfo.monthPillar}
-日柱: ${baziInfo.dayPillar}（日主）
-时柱: ${baziInfo.hourPillar}
+【任务】
+请根据以下信息进行完整的命理分析：
+- 姓名：${name}
+- 出生日期：${birthdate}（公历）
+- 出生时间：${birthtime}（24小时制）
 
-【五行分析】
-${wuxingInfo}
+【要求】
+请按照以下JSON格式返回分析结果，确保返回的是**纯JSON格式**，不要包含任何markdown标记（如\`\`\`json）或其他额外文字：
 
-【星座】
-${baziInfo.zodiac}
+{
+  "bazi": {
+    "yearPillar": "年柱（如：甲子）",
+    "monthPillar": "月柱（如：乙丑）",
+    "dayPillar": "日柱（如：丙寅）",
+    "hourPillar": "时柱（如：丁卯）",
+    "zodiac": "星座（如：白羊座）",
+    "moonPhase": "月相（如：满月 🌕）"
+  },
+  "advice": "200字左右的八字命理分析和建议，包括五行属性、性格特点、适合的职业方向、人生建议",
+  "zodiacAdvice": "150字左右的星座运势建议",
+  "moonAdvice": "150字左右的月相能量指引",
+  "gender": "根据姓名推测的性别（男/女/未知）"
+}
 
-【月相】
-${baziInfo.moonPhase}
+【注意事项】
+1. 年柱：根据公历年份计算天干地支
+2. 月柱：根据年份和月份计算，注意节气
+3. 日柱：使用万年历算法精确计算
+4. 时柱：根据出生时间确定时辰（子丑寅卯辰巳午未申酉戌亥）
+5. 星座：根据公历日期判断12星座
+6. 月相：计算出生当天的月相（新月🌑、娥眉月🌒、上弦月🌓、盈凸月🌔、满月🌕、亏凸月🌖、下弦月🌗、残月🌘）
+7. 所有建议需专业、温暖、具有启发性
+8. 必须返回纯JSON格式，不要添加任何解释文字
 
-请提供一段约200字的命理建议，包括：
-1. 五行属性分析
-2. 性格特点
-3. 适合的职业方向
-4. 人生建议
-
-请用专业但易懂的语言，温暖而具有启发性的方式表达。`;
+请立即返回JSON结果：`;
 
     try {
         const fetch = (await import('node-fetch')).default;
@@ -80,7 +94,7 @@ ${baziInfo.moonPhase}
                 messages: [
                     {
                         role: 'system',
-                        content: '你是一位资深的命理学大师，精通生辰八字、五行八卦、易经周易等传统命理学知识。你的分析专业、准确、富有洞察力。'
+                        content: '你是一位资深的命理学大师，精通生辰八字、五行八卦、易经周易、星座学和月相学等传统命理学知识。你的分析专业、准确、富有洞察力。你总是以JSON格式返回结果，不包含任何markdown标记。'
                     },
                     {
                         role: 'user',
@@ -88,129 +102,46 @@ ${baziInfo.moonPhase}
                     }
                 ],
                 temperature: 0.7,
-                max_tokens: 500
+                max_tokens: 2000
             })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`API request failed: ${response.status} - ${errorText}`);
+            console.error('API Error Response:', errorText);
+            throw new Error(`API 请求失败: ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
-        return data.choices[0].message.content;
-    } catch (error) {
-        console.error('AI API Error:', error);
-        throw error;
-    }
-}
+        const aiResponse = data.choices[0].message.content;
 
-/**
- * 获取星座建议
- */
-async function getZodiacAdvice(zodiac, apiType = 'deepseek') {
-    const apiKey = apiType === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
-    const apiUrl = apiType === 'deepseek'
-        ? 'https://api.deepseek.com/v1/chat/completions'
-        : 'https://api.openai.com/v1/chat/completions';
+        // 尝试解析 AI 返回的 JSON
+        let analysisResult;
+        try {
+            // 清理可能的 markdown 代码块标记
+            let cleanedResponse = aiResponse.trim();
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+            } else if (cleanedResponse.startsWith('```')) {
+                cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/```\s*$/, '');
+            }
 
-    const model = apiType === 'deepseek' ? 'deepseek-chat' : 'gpt-4o-mini';
-
-    if (!apiKey) {
-        throw new Error(`${apiType.toUpperCase()} API key not configured`);
-    }
-
-    const prompt = `请为${zodiac}提供一段约150字的运势建议，包括性格特点、优势、需要注意的方面，以及近期运势指引。`;
-
-    try {
-        const fetch = (await import('node-fetch')).default;
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: '你是一位专业的星座分析师，精通西方占星学。'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: 0.7,
-                max_tokens: 300
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
+            analysisResult = JSON.parse(cleanedResponse);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            console.error('AI Response:', aiResponse);
+            throw new Error('AI 返回的数据格式不正确，请重试');
         }
 
-        const data = await response.json();
-        return data.choices[0].message.content;
-    } catch (error) {
-        console.error('Zodiac API Error:', error);
-        throw error;
-    }
-}
-
-/**
- * 获取月相建议
- */
-async function getMoonPhaseAdvice(moonPhase, apiType = 'deepseek') {
-    const apiKey = apiType === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
-    const apiUrl = apiType === 'deepseek'
-        ? 'https://api.deepseek.com/v1/chat/completions'
-        : 'https://api.openai.com/v1/chat/completions';
-
-    const model = apiType === 'deepseek' ? 'deepseek-chat' : 'gpt-4o-mini';
-
-    if (!apiKey) {
-        throw new Error(`${apiType.toUpperCase()} API key not configured`);
-    }
-
-    const prompt = `请为出生在${moonPhase}的人提供一段约150字的能量指引，说明这个月相对个人性格和命运的影响，以及如何利用月相能量。`;
-
-    try {
-        const fetch = (await import('node-fetch')).default;
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: '你是一位精通月相能量学的专家，了解月相对人的影响。'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: 0.7,
-                max_tokens: 300
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
+        // 验证返回的数据结构
+        if (!analysisResult.bazi || !analysisResult.advice) {
+            throw new Error('AI 返回的数据不完整');
         }
 
-        const data = await response.json();
-        return data.choices[0].message.content;
+        return analysisResult;
+
     } catch (error) {
-        console.error('Moon Phase API Error:', error);
+        console.error('AI Analysis Error:', error);
         throw error;
     }
 }
@@ -220,8 +151,9 @@ async function getMoonPhaseAdvice(moonPhase, apiType = 'deepseek') {
  */
 app.post('/api/analyze', async (req, res) => {
     try {
-        const { name, birthdate, birthtime, apiType = 'deepseek' } = req.body;
+        const { name, birthdate, birthtime, apiProvider, apiKey, customApiUrl, customModel } = req.body;
 
+        // 验证必需参数
         if (!name || !birthdate || !birthtime) {
             return res.status(400).json({
                 success: false,
@@ -229,21 +161,27 @@ app.post('/api/analyze', async (req, res) => {
             });
         }
 
-        // 解析日期时间
-        const [year, month, day] = birthdate.split('-').map(Number);
-        const [hour, minute] = birthtime.split(':').map(Number);
-        const birthDate = new Date(year, month - 1, day, hour, minute);
+        if (!apiProvider || !apiKey) {
+            return res.status(400).json({
+                success: false,
+                error: '请配置 AI API 信息'
+            });
+        }
 
-        // 计算八字
-        const bazi = baziCalc.calculate(birthDate);
-        const baziInfo = baziCalc.format(bazi);
+        if (apiProvider === 'custom' && (!customApiUrl || !customModel)) {
+            return res.status(400).json({
+                success: false,
+                error: '使用自定义 API 时，请提供 API URL 和模型名称'
+            });
+        }
 
-        // 并行调用 AI API 获取建议
-        const [baziAdvice, zodiacAdvice, moonAdvice] = await Promise.all([
-            getAIAdvice(baziInfo, apiType),
-            getZodiacAdvice(baziInfo.zodiac, apiType),
-            getMoonPhaseAdvice(baziInfo.moonPhase, apiType)
-        ]);
+        // 调用 AI 进行分析
+        const analysisResult = await analyzeWithAI(name, birthdate, birthtime, {
+            apiProvider,
+            apiKey,
+            customApiUrl,
+            customModel
+        });
 
         // 返回结果
         res.json({
@@ -252,10 +190,11 @@ app.post('/api/analyze', async (req, res) => {
                 name: name,
                 birthdate: birthdate,
                 birthtime: birthtime,
-                bazi: baziInfo,
-                advice: baziAdvice,
-                zodiacAdvice: zodiacAdvice,
-                moonAdvice: moonAdvice
+                gender: analysisResult.gender || '未知',
+                bazi: analysisResult.bazi,
+                advice: analysisResult.advice,
+                zodiacAdvice: analysisResult.zodiacAdvice,
+                moonAdvice: analysisResult.moonAdvice
             }
         });
 
@@ -292,9 +231,8 @@ app.listen(PORT, () => {
     console.log(`🌐 服务器地址: http://localhost:${PORT}`);
     console.log(`📡 API 端点: http://localhost:${PORT}/api/analyze`);
     console.log('');
-    console.log('请确保已配置以下环境变量：');
-    console.log('  - DEEPSEEK_API_KEY (DeepSeek API)');
-    console.log('  - OPENAI_API_KEY (ChatGPT API)');
+    console.log('✨ 本系统使用 AI 进行命理运算和分析');
+    console.log('📝 请在前端界面配置您的 API Key');
 });
 
 module.exports = app;
