@@ -309,6 +309,40 @@
             border: 1px solid #ffeaa7;
             color: #856404;
         }
+
+        .server-status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .server-status.online {
+            background: #d4edda;
+            border: 2px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .server-status.offline {
+            background: #f8d7da;
+            border: 2px solid #f5c6cb;
+            color: #721c24;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .server-status small {
+            display: block;
+            margin-top: 5px;
+            font-size: 0.85em;
+            font-weight: normal;
+        }
     </style>
 </head>
 <body>
@@ -319,6 +353,10 @@
         </div>
 
         <div class="content">
+            <div class="server-status" id="serverStatus">
+                正在检查服务器状态...
+            </div>
+
             <form id="baziForm">
                 <div class="form-group">
                     <label for="name">姓名</label>

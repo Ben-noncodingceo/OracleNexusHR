@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const customModel = document.getElementById('customModel');
     const testApiBtn = document.getElementById('testApiBtn');
     const apiStatus = document.getElementById('apiStatus');
+    const serverStatus = document.getElementById('serverStatus');
+
+    // 检查服务器状态
+    checkServerStatus();
 
     // 设置今天的日期作为默认值
     const today = new Date();
@@ -325,6 +329,57 @@ async function downloadLogs() {
         alert('✅ 日志文件下载成功！');
     } catch (err) {
         console.error('Download logs error:', err);
-        alert('❌ 下载日志失败: ' + err.message);
+        alert('❌ 下载日志失败: ' + err.message + '\n\n请确保服务器正在运行！\n运行命令: npm start');
+    }
+}
+
+/**
+ * 检查服务器状态
+ */
+async function checkServerStatus() {
+    const serverStatus = document.getElementById('serverStatus');
+    if (!serverStatus) return;
+
+    try {
+        const response = await fetch('/api/health', {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            serverStatus.innerHTML = '🟢 服务器运行正常';
+            serverStatus.className = 'server-status online';
+            console.log('服务器状态:', data);
+        } else {
+            throw new Error('服务器响应异常');
+        }
+    } catch (err) {
+        console.error('服务器状态检查失败:', err);
+        serverStatus.innerHTML = '🔴 服务器未启动<br><small>请运行: npm start</small>';
+        serverStatus.className = 'server-status offline';
+
+        // 禁用提交按钮
+        const submitBtn = document.getElementById('submitBtn');
+        const testApiBtn = document.getElementById('testApiBtn');
+        if (submitBtn) submitBtn.disabled = true;
+        if (testApiBtn) testApiBtn.disabled = true;
+
+        // 显示错误提示
+        setTimeout(() => {
+            const errorDiv = document.getElementById('error');
+            if (errorDiv) {
+                errorDiv.innerHTML = `
+                    <strong>⚠️ 服务器未启动</strong><br><br>
+                    请按照以下步骤启动服务器：<br>
+                    1. 打开终端/命令行<br>
+                    2. 进入项目目录<br>
+                    3. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm install</code> (首次运行)<br>
+                    4. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm start</code><br>
+                    5. 刷新本页面
+                `;
+                errorDiv.classList.add('active');
+            }
+        }, 500);
     }
 }

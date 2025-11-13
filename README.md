@@ -20,7 +20,23 @@
 - npm 或 yarn 包管理器
 - DeepSeek API Key 或 OpenAI API Key（使用时在界面配置）
 
-### 安装步骤
+### 方式一：一键启动（推荐）
+
+**Windows 用户**：
+1. 双击运行 `start.bat`
+2. 等待依赖自动安装和服务器启动
+3. 浏览器访问 `http://localhost:3000`
+
+**Linux/Mac 用户**：
+```bash
+./start.sh
+```
+或
+```bash
+bash start.sh
+```
+
+### 方式二：手动启动
 
 1. **克隆或下载项目**
 
@@ -48,6 +64,16 @@ npm start
 ```bash
 npm run dev
 ```
+
+### 重要提示
+
+⚠️ **必须先启动服务器，然后才能使用网页！**
+
+如果直接打开 `index.html` 文件，会显示"服务器未启动"错误。
+正确的使用方式：
+1. 运行 `npm start` 或 `start.bat` / `start.sh` 启动服务器
+2. 在浏览器访问 `http://localhost:3000`
+3. 页面顶部显示 🟢 服务器运行正常，即可正常使用
 
 ### 获取 API Key
 
@@ -100,14 +126,16 @@ npm run dev
 
 ```
 bazi-fortune-calculator/
-├── index.html              # 前端主页面（含 AI 配置界面）
-├── app.js                  # 前端应用逻辑
+├── index.html              # 前端主页面（含 AI 配置界面和服务器状态检查）
+├── app.js                  # 前端应用逻辑（含详细错误处理和服务器状态检查）
 ├── bazi-calculator.js      # 八字计算核心库（已弃用，由 AI 替代）
-├── server.js               # 后端 Express 服务器（AI 代理）
+├── server.js               # 后端 Express 服务器（AI 代理、日志系统）
+├── start.sh                # Linux/Mac 一键启动脚本
+├── start.bat               # Windows 一键启动脚本
 ├── package.json            # 项目配置和依赖
 ├── .env.example            # 环境变量模板（可选）
 ├── .gitignore             # Git 忽略文件
-└── README.md              # 项目文档
+└── README.md              # 项目文档（含详细故障排除指南）
 ```
 
 ## 🔧 技术栈
@@ -248,6 +276,49 @@ const PORT = process.env.PORT || 3000;
 
 ## 🐛 故障排除
 
+### 问题：页面显示"服务器未启动"或"Load failed"
+
+**原因**：服务器没有运行
+
+**解决方案**：
+1. **检查服务器是否启动**：
+   - 页面顶部应该显示 🟢 服务器运行正常
+   - 如果显示 🔴 服务器未启动，说明后端服务器没有运行
+
+2. **启动服务器**：
+   ```bash
+   # 方式一：使用启动脚本
+   ./start.sh        # Linux/Mac
+   start.bat         # Windows (双击运行)
+
+   # 方式二：手动启动
+   npm install       # 首次运行需要安装依赖
+   npm start         # 启动服务器
+   ```
+
+3. **验证服务器启动成功**：
+   - 终端/命令行应该显示：
+     ```
+     ========================================
+     🔮 八字命理分析系统已启动
+     🌐 服务器地址: http://localhost:3000
+     ========================================
+     ```
+   - 刷新浏览器页面，服务器状态应该变为绿色
+
+4. **访问正确的 URL**：
+   - ✅ 正确：`http://localhost:3000`
+   - ❌ 错误：直接打开 `index.html` 文件
+
+### 问题：下载日志失败
+
+**原因**：服务器未运行或网络连接问题
+
+**解决方案**：
+1. 确保服务器正在运行（参考上一条）
+2. 检查浏览器控制台是否有错误信息
+3. 手动访问 `http://localhost:3000/api/logs/download` 查看是否可以访问
+
 ### 问题：API 请求失败
 
 **可能原因**：
@@ -257,10 +328,29 @@ const PORT = process.env.PORT || 3000;
 4. API URL 配置错误（自定义 API）
 
 **解决方案**：
-1. 检查 API Key 是否正确
-2. 登录 API 提供商平台查看配额和状态
-3. 检查网络连接和防火墙设置
-4. 查看浏览器控制台和服务器日志
+1. **使用 API 测试功能**：
+   - 填写 API Key 后，点击"🔍 测试 API 连接"按钮
+   - 查看具体的错误信息和错误代码
+
+2. **检查 API Key**：
+   - DeepSeek: 登录 https://platform.deepseek.com/ 查看 API Key
+   - OpenAI: 登录 https://platform.openai.com/ 查看 API Key
+   - 确保 API Key 以正确的前缀开头（sk-xxxx）
+
+3. **检查网络连接**：
+   - 确保可以访问 API 服务商的网站
+   - 检查防火墙设置
+   - 如在中国大陆，OpenAI API 可能需要代理
+
+4. **查看详细错误**：
+   - 系统现在会显示详细的错误代码和信息
+   - 点击"📥 下载服务器日志"查看完整的错误日志
+   - 错误代码说明：
+     - `NETWORK_ERROR`: 网络连接失败
+     - `HTTP_401`: API Key 无效
+     - `HTTP_429`: API 配额不足或请求过于频繁
+     - `HTTP_500`: API 服务器错误
+     - `JSON_PARSE_ERROR`: AI 返回数据格式错误
 
 ### 问题：AI 返回的数据格式不正确
 
