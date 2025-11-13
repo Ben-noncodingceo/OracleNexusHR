@@ -129,8 +129,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 获取表单数据
         const formData = {
             name: document.getElementById('name').value,
+            gender: document.getElementById('gender').value,
             birthdate: document.getElementById('birthdate').value,
             birthtime: document.getElementById('birthtime').value,
+            birthCity: document.getElementById('birthCity').value,
             apiProvider: apiProvider.value,
             apiKey: document.getElementById('apiKey').value
         };
@@ -150,8 +152,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             console.log('发送分析请求:', {
                 name: formData.name,
+                gender: formData.gender,
                 birthdate: formData.birthdate,
                 birthtime: formData.birthtime,
+                birthCity: formData.birthCity,
                 apiProvider: formData.apiProvider
             });
 
@@ -255,6 +259,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('resultGender').textContent = data.gender || '未知';
         document.getElementById('resultDate').textContent = data.birthdate;
         document.getElementById('resultTime').textContent = data.birthtime;
+
+        // 地理信息
+        if (data.location) {
+            document.getElementById('resultCity').textContent = data.location.city || data.birthCity || '未知';
+            document.getElementById('resultProvince').textContent = data.location.province || '未知';
+            const coords = data.location.latitude && data.location.longitude
+                ? `北纬 ${data.location.latitude}°, 东经 ${data.location.longitude}°`
+                : '未知';
+            document.getElementById('resultCoordinates').textContent = coords;
+        } else {
+            document.getElementById('resultCity').textContent = data.birthCity || '未知';
+            document.getElementById('resultProvince').textContent = '未知';
+            document.getElementById('resultCoordinates').textContent = '未知';
+        }
 
         // 八字四柱
         document.getElementById('yearPillar').textContent = data.bazi.yearPillar || '计算中';

@@ -364,6 +364,16 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="gender">性别</label>
+                    <select id="gender" name="gender" required>
+                        <option value="">请选择性别</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                    </select>
+                    <p class="hint">性别会影响命理分析的准确性</p>
+                </div>
+
+                <div class="form-group">
                     <label for="birthdate">出生日期</label>
                     <input type="date" id="birthdate" name="birthdate" required>
                 </div>
@@ -371,6 +381,12 @@
                 <div class="form-group">
                     <label for="birthtime">出生时间</label>
                     <input type="time" id="birthtime" name="birthtime" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="birthCity">出生城市</label>
+                    <input type="text" id="birthCity" name="birthCity" required placeholder="例如: 北京、上海、成都">
+                    <p class="hint">AI 将自动识别城市所在省份和经纬度，用于精确计算真太阳时</p>
                 </div>
 
                 <div class="divider"></div>
@@ -445,6 +461,15 @@
                         </div>
                         <div class="info-item">
                             <strong>出生时间：</strong><span id="resultTime"></span>
+                        </div>
+                        <div class="info-item">
+                            <strong>出生地点：</strong><span id="resultCity"></span>
+                        </div>
+                        <div class="info-item">
+                            <strong>所在省份：</strong><span id="resultProvince"></span>
+                        </div>
+                        <div class="info-item">
+                            <strong>地理坐标：</strong><span id="resultCoordinates"></span>
                         </div>
                     </div>
                 </div>
