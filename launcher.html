@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>八字命理分析系统 - 启动器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .status.checking {
+            background: #fff3cd;
+            border: 2px solid #ffeaa7;
+            color: #856404;
+        }
+
+        .status.online {
+            background: #d4edda;
+            border: 2px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status.offline {
+            background: #f8d7da;
+            border: 2px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .instructions {
+            margin: 30px 0;
+        }
+
+        .instructions h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .step h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .step p {
+            color: #666;
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+
+        .command {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            margin: 10px 0;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .command:hover {
+            background: #1a202c;
+        }
+
+        .command::after {
+            content: '📋 点击复制';
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.85em;
+            color: #a0aec0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .platform-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .platform-tab {
+            flex: 1;
+            padding: 12px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .platform-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .platform-content {
+            display: none;
+        }
+
+        .platform-content.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #155724;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔮 八字命理分析系统</h1>
+            <p>系统启动器</p>
+        </div>
+
+        <div class="content">
+            <div class="status checking" id="status">
+                <span class="spinner"></span>
+                正在检查服务器状态...
+            </div>
+
+            <div id="onlineSection" style="display: none;">
+                <h2 style="color: #155724; text-align: center; margin-bottom: 20px;">
+                    ✅ 服务器已运行！
+                </h2>
+                <a href="http://localhost:3000" class="btn" target="_blank">
+                    🚀 打开应用
+                </a>
+            </div>
+
+            <div id="offlineSection" style="display: none;">
+                <div class="instructions">
+                    <h2>⚠️ 服务器未启动</h2>
+                    <p style="color: #666; margin-bottom: 20px;">
+                        请按照以下步骤启动服务器：
+                    </p>
+
+                    <div class="platform-tabs">
+                        <button class="platform-tab active" onclick="switchPlatform('windows')">
+                            🪟 Windows
+                        </button>
+                        <button class="platform-tab" onclick="switchPlatform('mac')">
+                            🍎 Mac/Linux
+                        </button>
+                    </div>
+
+                    <div class="platform-content active" id="windows-content">
+                        <div class="step">
+                            <h3>方式一：双击启动（推荐）</h3>
+                            <p>在项目文件夹中找到并双击运行：</p>
+                            <div class="command" onclick="copyCommand('start.bat')">
+                                start.bat
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <h3>方式二：命令行启动</h3>
+                            <p>1. 按 Win+R，输入 cmd，回车打开命令提示符</p>
+                            <p>2. 进入项目目录（将路径改为您的实际路径）：</p>
+                            <div class="command" onclick="copyCommand('cd C:\\path\\to\\OracleNexusHR')">
+                                cd C:\path\to\OracleNexusHR
+                            </div>
+                            <p>3. 运行以下命令（首次运行）：</p>
+                            <div class="command" onclick="copyCommand('npm install')">
+                                npm install
+                            </div>
+                            <p>4. 启动服务器：</p>
+                            <div class="command" onclick="copyCommand('npm run launch')">
+                                npm run launch
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="platform-content" id="mac-content">
+                        <div class="step">
+                            <h3>方式一：双击启动（推荐）</h3>
+                            <p>在项目文件夹中找到并运行：</p>
+                            <div class="command" onclick="copyCommand('./start.sh')">
+                                ./start.sh
+                            </div>
+                            <p style="color: #e74c3c; margin-top: 10px;">
+                                注意：首次运行可能需要在终端中执行 <code>chmod +x start.sh</code>
+                            </p>
+                        </div>
+
+                        <div class="step">
+                            <h3>方式二：终端启动</h3>
+                            <p>1. 打开终端（Terminal）</p>
+                            <p>2. 进入项目目录：</p>
+                            <div class="command" onclick="copyCommand('cd /path/to/OracleNexusHR')">
+                                cd /path/to/OracleNexusHR
+                            </div>
+                            <p>3. 运行以下命令（首次运行）：</p>
+                            <div class="command" onclick="copyCommand('npm install')">
+                                npm install
+                            </div>
+                            <p>4. 启动服务器：</p>
+                            <div class="command" onclick="copyCommand('npm run launch')">
+                                npm run launch
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn" onclick="recheckServer()">
+                        🔄 重新检查服务器状态
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        ✅ 命令已复制到剪贴板！
+    </div>
+
+    <script>
+        // 检查服务器状态
+        async function checkServer() {
+            try {
+                const response = await fetch('http://localhost:3000/api/health');
+                if (response.ok) {
+                    document.getElementById('status').className = 'status online';
+                    document.getElementById('status').innerHTML = '🟢 服务器运行正常';
+                    document.getElementById('onlineSection').style.display = 'block';
+                    document.getElementById('offlineSection').style.display = 'none';
+                } else {
+                    throw new Error('Server not responding');
+                }
+            } catch (error) {
+                document.getElementById('status').className = 'status offline';
+                document.getElementById('status').innerHTML = '🔴 服务器未启动';
+                document.getElementById('onlineSection').style.display = 'none';
+                document.getElementById('offlineSection').style.display = 'block';
+            }
+        }
+
+        // 切换平台
+        function switchPlatform(platform) {
+            // 更新选项卡
+            document.querySelectorAll('.platform-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新内容
+            document.querySelectorAll('.platform-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(platform + '-content').classList.add('active');
+        }
+
+        // 复制命令
+        function copyCommand(command) {
+            navigator.clipboard.writeText(command).then(() => {
+                showToast();
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('已选中命令: ' + command + '\n请手动复制（Ctrl+C 或 Cmd+C）');
+            });
+        }
+
+        // 显示提示
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // 重新检查服务器
+        function recheckServer() {
+            document.getElementById('status').className = 'status checking';
+            document.getElementById('status').innerHTML = '<span class="spinner"></span> 正在检查服务器状态...';
+            document.getElementById('onlineSection').style.display = 'none';
+            document.getElementById('offlineSection').style.display = 'none';
+
+            setTimeout(checkServer, 1000);
+        }
+
+        // 页面加载时检查
+        window.addEventListener('load', () => {
+            setTimeout(checkServer, 500);
+        });
+
+        // 每5秒自动检查一次（如果服务器未启动）
+        setInterval(() => {
+            if (document.getElementById('offlineSection').style.display !== 'none') {
+                checkServer();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>

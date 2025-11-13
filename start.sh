@@ -35,7 +35,10 @@ else
 fi
 
 # 启动服务器
-echo "🚀 正在启动服务器..."
+echo "🚀 正在启动服务器并打开浏览器..."
+echo ""
+echo "💡 提示: 按 Ctrl+C 可以停止服务器"
 echo ""
 
-npm start
+# 使用 npm run launch 来启动服务器并自动打开浏览器
+npm run launch
