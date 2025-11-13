@@ -20,12 +20,12 @@
 - npm 或 yarn 包管理器
 - DeepSeek API Key 或 OpenAI API Key（使用时在界面配置）
 
-### 方式一：一键启动（推荐）
+### 方式一：一键启动（推荐）⭐
 
 **Windows 用户**：
 1. 双击运行 `start.bat`
 2. 等待依赖自动安装和服务器启动
-3. 浏览器访问 `http://localhost:3000`
+3. **浏览器会自动打开！** 🚀
 
 **Linux/Mac 用户**：
 ```bash
@@ -36,7 +36,24 @@
 bash start.sh
 ```
 
-### 方式二：手动启动
+**特点**：
+- ✅ 自动检查并安装依赖
+- ✅ 自动启动服务器
+- ✅ **自动打开浏览器**到正确页面
+- ✅ 无需任何手动操作！
+
+### 方式二：使用启动器页面
+
+如果不想使用命令行，可以双击打开 `launcher.html` 文件：
+- 📱 友好的图形界面
+- 🔍 自动检测服务器状态
+- 📋 一键复制启动命令
+- 🔄 自动重试连接
+- 💡 详细的启动指南
+
+当服务器启动后，启动器会自动检测并提供"打开应用"按钮。
+
+### 方式三：手动启动
 
 1. **克隆或下载项目**
 
@@ -127,15 +144,18 @@ npm run dev
 ```
 bazi-fortune-calculator/
 ├── index.html              # 前端主页面（含 AI 配置界面和服务器状态检查）
+├── launcher.html           # 🆕 启动器页面（图形化启动引导）
 ├── app.js                  # 前端应用逻辑（含详细错误处理和服务器状态检查）
 ├── bazi-calculator.js      # 八字计算核心库（已弃用，由 AI 替代）
 ├── server.js               # 后端 Express 服务器（AI 代理、日志系统）
-├── start.sh                # Linux/Mac 一键启动脚本
-├── start.bat               # Windows 一键启动脚本
+├── start.js                # 🆕 Node.js 启动脚本（自动启动服务器并打开浏览器）
+├── start.sh                # Linux/Mac 一键启动脚本（已集成自动打开浏览器）
+├── start.bat               # Windows 一键启动脚本（已集成自动打开浏览器）
 ├── package.json            # 项目配置和依赖
 ├── .env.example            # 环境变量模板（可选）
-├── .gitignore             # Git 忽略文件
-└── README.md              # 项目文档（含详细故障排除指南）
+├── .gitignore              # Git 忽略文件
+├── README.md               # 项目文档（含详细故障排除指南）
+└── 快速使用指南.md         # 🆕 图文并茂的快速上手指南
 ```
 
 ## 🔧 技术栈

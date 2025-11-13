@@ -41,11 +41,11 @@ if not exist "node_modules" (
 )
 
 REM 启动服务器
-echo 🚀 正在启动服务器...
+echo 🚀 正在启动服务器并打开浏览器...
 echo.
-echo 提示: 按 Ctrl+C 可以停止服务器
+echo 💡 提示: 按 Ctrl+C 可以停止服务器
 echo.
 
-call npm start
+call npm run launch
 
 pause
