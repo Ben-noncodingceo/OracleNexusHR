@@ -16,6 +16,87 @@ app.use(express.json());
 app.use(express.static('.'));
 
 /**
+ * 测试 AI API 连接
+ */
+async function testAIConnection(apiConfig) {
+    const { apiProvider, apiKey, customApiUrl, customModel } = apiConfig;
+
+    // 确定 API URL 和模型
+    let apiUrl, model;
+
+    if (apiProvider === 'deepseek') {
+        apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+        model = 'deepseek-chat';
+    } else if (apiProvider === 'openai') {
+        apiUrl = 'https://api.openai.com/v1/chat/completions';
+        model = 'gpt-4o-mini';
+    } else if (apiProvider === 'custom') {
+        apiUrl = customApiUrl;
+        model = customModel;
+    } else {
+        throw new Error('不支持的 API 提供商');
+    }
+
+    if (!apiKey) {
+        throw new Error('API Key 未提供');
+    }
+
+    console.log(`[测试] 测试 ${apiProvider} API 连接...`);
+    console.log(`[测试] API URL: ${apiUrl}`);
+    console.log(`[测试] 模型: ${model}`);
+
+    try {
+        const fetch = (await import('node-fetch')).default;
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    {
+                        role: 'user',
+                        content: '请回复"测试成功"'
+                    }
+                ],
+                max_tokens: 50
+            })
+        });
+
+        console.log(`[测试] 响应状态: ${response.status}`);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[测试] API 错误响应:', errorText);
+
+            // 尝试解析错误信息
+            try {
+                const errorJson = JSON.parse(errorText);
+                throw new Error(errorJson.error?.message || errorJson.message || `API 返回错误 (${response.status})`);
+            } catch (e) {
+                throw new Error(`API 请求失败 (${response.status}): ${errorText.substring(0, 100)}`);
+            }
+        }
+
+        const data = await response.json();
+        console.log('[测试] API 测试成功');
+
+        return {
+            success: true,
+            model: model,
+            response: data
+        };
+
+    } catch (error) {
+        console.error('[测试] API 测试失败:', error.message);
+        throw error;
+    }
+}
+
+/**
  * 调用 AI API 进行完整的命理分析
  */
 async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
@@ -40,6 +121,9 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
     if (!apiKey) {
         throw new Error('API Key 未提供');
     }
+
+    console.log(`[分析] 开始分析: ${name}, ${birthdate} ${birthtime}`);
+    console.log(`[分析] 使用 ${apiProvider} API, 模型: ${model}`);
 
     // 构建 AI 提示词
     const prompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学和月相学。
@@ -83,6 +167,8 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
     try {
         const fetch = (await import('node-fetch')).default;
 
+        console.log('[分析] 发送请求到 AI API...');
+
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
@@ -106,45 +192,123 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
             })
         });
 
+        console.log(`[分析] AI API 响应状态: ${response.status}`);
+
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API Error Response:', errorText);
-            throw new Error(`API 请求失败: ${response.status} - ${errorText}`);
+            console.error('[分析] API 错误响应:', errorText);
+
+            // 尝试解析错误信息
+            try {
+                const errorJson = JSON.parse(errorText);
+                throw new Error(errorJson.error?.message || errorJson.message || `API 返回错误 (${response.status})`);
+            } catch (e) {
+                throw new Error(`API 请求失败 (${response.status}): ${errorText.substring(0, 200)}`);
+            }
         }
 
         const data = await response.json();
+        console.log('[分析] 收到 AI 响应');
+
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            console.error('[分析] AI 响应格式错误:', JSON.stringify(data));
+            throw new Error('AI 响应格式不正确');
+        }
+
         const aiResponse = data.choices[0].message.content;
+        console.log('[分析] AI 返回内容长度:', aiResponse.length);
 
         // 尝试解析 AI 返回的 JSON
         let analysisResult;
         try {
             // 清理可能的 markdown 代码块标记
             let cleanedResponse = aiResponse.trim();
+
+            // 移除 markdown 代码块
             if (cleanedResponse.startsWith('```json')) {
                 cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/```\s*$/, '');
             } else if (cleanedResponse.startsWith('```')) {
                 cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/```\s*$/, '');
             }
 
+            console.log('[分析] 清理后的响应前100字符:', cleanedResponse.substring(0, 100));
+
             analysisResult = JSON.parse(cleanedResponse);
+            console.log('[分析] JSON 解析成功');
+
         } catch (parseError) {
-            console.error('JSON Parse Error:', parseError);
-            console.error('AI Response:', aiResponse);
+            console.error('[分析] JSON 解析错误:', parseError.message);
+            console.error('[分析] AI 原始返回（前500字符）:', aiResponse.substring(0, 500));
             throw new Error('AI 返回的数据格式不正确，请重试');
         }
 
         // 验证返回的数据结构
         if (!analysisResult.bazi || !analysisResult.advice) {
+            console.error('[分析] 数据结构不完整:', JSON.stringify(analysisResult));
             throw new Error('AI 返回的数据不完整');
         }
 
+        console.log('[分析] 分析完成');
         return analysisResult;
 
     } catch (error) {
-        console.error('AI Analysis Error:', error);
+        console.error('[分析] 分析过程出错:', error.message);
         throw error;
     }
 }
+
+/**
+ * API 测试端点
+ */
+app.post('/api/test', async (req, res) => {
+    try {
+        const { apiProvider, apiKey, customApiUrl, customModel } = req.body;
+
+        console.log('\n========== API 测试请求 ==========');
+        console.log('提供商:', apiProvider);
+
+        // 验证必需参数
+        if (!apiProvider || !apiKey) {
+            return res.status(400).json({
+                success: false,
+                error: '请配置 AI API 信息'
+            });
+        }
+
+        if (apiProvider === 'custom' && (!customApiUrl || !customModel)) {
+            return res.status(400).json({
+                success: false,
+                error: '使用自定义 API 时，请提供 API URL 和模型名称'
+            });
+        }
+
+        // 测试 API 连接
+        const testResult = await testAIConnection({
+            apiProvider,
+            apiKey,
+            customApiUrl,
+            customModel
+        });
+
+        console.log('========== API 测试成功 ==========\n');
+
+        res.json({
+            success: true,
+            model: testResult.model,
+            message: 'API 连接测试成功'
+        });
+
+    } catch (error) {
+        console.error('========== API 测试失败 ==========');
+        console.error('错误:', error.message);
+        console.error('======================================\n');
+
+        res.status(500).json({
+            success: false,
+            error: error.message || 'API 测试失败'
+        });
+    }
+});
 
 /**
  * 主要 API 端点：分析八字
@@ -152,6 +316,12 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
 app.post('/api/analyze', async (req, res) => {
     try {
         const { name, birthdate, birthtime, apiProvider, apiKey, customApiUrl, customModel } = req.body;
+
+        console.log('\n========== 命理分析请求 ==========');
+        console.log('姓名:', name);
+        console.log('出生日期:', birthdate);
+        console.log('出生时间:', birthtime);
+        console.log('API 提供商:', apiProvider);
 
         // 验证必需参数
         if (!name || !birthdate || !birthtime) {
@@ -183,6 +353,8 @@ app.post('/api/analyze', async (req, res) => {
             customModel
         });
 
+        console.log('========== 分析完成 ==========\n');
+
         // 返回结果
         res.json({
             success: true,
@@ -199,7 +371,12 @@ app.post('/api/analyze', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Analysis error:', error);
+        console.error('========== 分析失败 ==========');
+        console.error('错误类型:', error.constructor.name);
+        console.error('错误信息:', error.message);
+        console.error('错误堆栈:', error.stack);
+        console.error('==================================\n');
+
         res.status(500).json({
             success: false,
             error: error.message || '分析过程中发生错误'
@@ -227,12 +404,15 @@ app.get('/', (req, res) => {
 
 // 启动服务器
 app.listen(PORT, () => {
-    console.log(`🔮 八字命理分析系统已启动`);
+    console.log('========================================');
+    console.log('🔮 八字命理分析系统已启动');
     console.log(`🌐 服务器地址: http://localhost:${PORT}`);
     console.log(`📡 API 端点: http://localhost:${PORT}/api/analyze`);
+    console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
     console.log('');
     console.log('✨ 本系统使用 AI 进行命理运算和分析');
     console.log('📝 请在前端界面配置您的 API Key');
+    console.log('========================================\n');
 });
 
 module.exports = app;

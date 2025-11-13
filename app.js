@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const customModelGroup = document.getElementById('customModelGroup');
     const customApiUrl = document.getElementById('customApiUrl');
     const customModel = document.getElementById('customModel');
+    const testApiBtn = document.getElementById('testApiBtn');
+    const apiStatus = document.getElementById('apiStatus');
 
     // 设置今天的日期作为默认值
     const today = new Date();
@@ -36,6 +38,69 @@ document.addEventListener('DOMContentLoaded', () => {
             customModelGroup.classList.add('hidden');
             customApiUrl.required = false;
             customModel.required = false;
+        }
+        // 清除之前的 API 状态
+        apiStatus.classList.remove('active');
+    });
+
+    // 监听 API Key 和其他配置变化，清除测试状态
+    document.getElementById('apiKey').addEventListener('input', () => {
+        apiStatus.classList.remove('active');
+    });
+
+    // 测试 API 连接
+    testApiBtn.addEventListener('click', async () => {
+        const apiKey = document.getElementById('apiKey').value;
+
+        if (!apiKey) {
+            showApiStatus('请先输入 API Key', 'error');
+            return;
+        }
+
+        const apiConfig = {
+            apiProvider: apiProvider.value,
+            apiKey: apiKey
+        };
+
+        if (apiProvider.value === 'custom') {
+            if (!customApiUrl.value || !customModel.value) {
+                showApiStatus('请填写完整的自定义 API 配置', 'error');
+                return;
+            }
+            apiConfig.customApiUrl = customApiUrl.value;
+            apiConfig.customModel = customModel.value;
+        }
+
+        // 显示测试中状态
+        showApiStatus('⏳ 正在测试 API 连接...', 'testing');
+        testApiBtn.disabled = true;
+
+        try {
+            const response = await fetch('/api/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(apiConfig)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'API 测试失败');
+            }
+
+            if (data.success) {
+                showApiStatus(`✅ API 连接成功！模型：${data.model || '未知'}`, 'success');
+            } else {
+                throw new Error(data.error || 'API 测试失败');
+            }
+
+        } catch (err) {
+            console.error('API Test Error:', err);
+            showApiStatus(`❌ API 连接失败：${err.message}`, 'error');
+        } finally {
+            testApiBtn.disabled = false;
         }
     });
 
@@ -65,6 +130,13 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.disabled = true;
 
         try {
+            console.log('发送分析请求:', {
+                name: formData.name,
+                birthdate: formData.birthdate,
+                birthtime: formData.birthtime,
+                apiProvider: formData.apiProvider
+            });
+
             // 发送请求到后端
             const response = await fetch('/api/analyze', {
                 method: 'POST',
@@ -74,10 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(formData)
             });
 
+            console.log('收到响应状态:', response.status);
+
             const data = await response.json();
+            console.log('解析的数据:', data);
 
             if (!response.ok) {
-                throw new Error(data.error || '请求失败');
+                throw new Error(data.error || `请求失败 (${response.status})`);
             }
 
             if (data.success) {
@@ -88,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (err) {
-            console.error('Error:', err);
+            console.error('Analysis Error:', err);
             showError(err.message || '发生未知错误，请稍后重试');
         } finally {
             loading.classList.remove('active');
@@ -97,9 +172,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     /**
+     * 显示 API 状态
+     */
+    function showApiStatus(message, type) {
+        apiStatus.textContent = message;
+        apiStatus.className = 'api-status active ' + type;
+    }
+
+    /**
      * 显示分析结果
      */
     function displayResult(data) {
+        console.log('显示结果:', data);
+
         // 基本信息
         document.getElementById('resultName').textContent = data.name;
         document.getElementById('resultGender').textContent = data.gender || '未知';
@@ -107,19 +192,19 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('resultTime').textContent = data.birthtime;
 
         // 八字四柱
-        document.getElementById('yearPillar').textContent = data.bazi.yearPillar;
-        document.getElementById('monthPillar').textContent = data.bazi.monthPillar;
-        document.getElementById('dayPillar').textContent = data.bazi.dayPillar;
-        document.getElementById('hourPillar').textContent = data.bazi.hourPillar;
+        document.getElementById('yearPillar').textContent = data.bazi.yearPillar || '计算中';
+        document.getElementById('monthPillar').textContent = data.bazi.monthPillar || '计算中';
+        document.getElementById('dayPillar').textContent = data.bazi.dayPillar || '计算中';
+        document.getElementById('hourPillar').textContent = data.bazi.hourPillar || '计算中';
 
         // 星座和月相
-        document.getElementById('zodiac').textContent = data.bazi.zodiac;
-        document.getElementById('moonPhase').textContent = data.bazi.moonPhase;
+        document.getElementById('zodiac').textContent = data.bazi.zodiac || '未知';
+        document.getElementById('moonPhase').textContent = data.bazi.moonPhase || '未知';
 
         // AI 生成的建议
-        document.getElementById('advice').textContent = data.advice;
-        document.getElementById('zodiacAdvice').textContent = data.zodiacAdvice;
-        document.getElementById('moonAdvice').textContent = data.moonAdvice;
+        document.getElementById('advice').textContent = data.advice || '暂无建议';
+        document.getElementById('zodiacAdvice').textContent = data.zodiacAdvice || '暂无建议';
+        document.getElementById('moonAdvice').textContent = data.moonAdvice || '暂无建议';
 
         // 显示结果区域
         result.classList.add('active');
