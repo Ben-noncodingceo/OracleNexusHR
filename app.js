@@ -76,24 +76,38 @@ document.addEventListener('DOMContentLoaded', () => {
         testApiBtn.disabled = true;
 
         try {
-            const response = await fetch('/api/test', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(apiConfig)
-            });
+            let response;
+            try {
+                response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(apiConfig)
+                });
+            } catch (fetchError) {
+                throw new Error(`网络连接失败: ${fetchError.message}`);
+            }
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                throw new Error(`服务器返回数据格式错误 (HTTP ${response.status})`);
+            }
 
             if (!response.ok) {
-                throw new Error(data.error || 'API 测试失败');
+                const errorMsg = data.error || 'API 测试失败';
+                const errorCode = data.code ? ` [${data.code}]` : '';
+                throw new Error(errorMsg + errorCode);
             }
 
             if (data.success) {
                 showApiStatus(`✅ API 连接成功！模型：${data.model || '未知'}`, 'success');
             } else {
-                throw new Error(data.error || 'API 测试失败');
+                const errorMsg = data.error || 'API 测试失败';
+                const errorCode = data.code ? ` [${data.code}]` : '';
+                throw new Error(errorMsg + errorCode);
             }
 
         } catch (err) {
@@ -138,33 +152,80 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // 发送请求到后端
-            const response = await fetch('/api/analyze', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
+            let response;
+            try {
+                response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+            } catch (fetchError) {
+                // 网络错误
+                const error = new Error('网络连接失败，请检查网络连接');
+                error.code = 'NETWORK_ERROR';
+                error.details = {
+                    errorType: fetchError.name,
+                    errorMessage: fetchError.message
+                };
+                throw error;
+            }
 
             console.log('收到响应状态:', response.status);
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                // JSON 解析错误
+                const error = new Error('服务器返回数据格式错误');
+                error.code = 'JSON_PARSE_ERROR';
+                error.details = {
+                    httpStatus: response.status,
+                    errorMessage: jsonError.message
+                };
+                throw error;
+            }
             console.log('解析的数据:', data);
 
             if (!response.ok) {
-                throw new Error(data.error || `请求失败 (${response.status})`);
+                // 创建包含详细信息的错误对象
+                const error = new Error(data.error || `请求失败 (${response.status})`);
+                error.code = data.code || `HTTP_${response.status}`;
+                error.details = data.details || null;
+                throw error;
             }
 
             if (data.success) {
                 // 显示结果
                 displayResult(data.data);
             } else {
-                throw new Error(data.error || '分析失败');
+                // 创建包含详细信息的错误对象
+                const error = new Error(data.error || '分析失败');
+                error.code = data.code || 'UNKNOWN_ERROR';
+                error.details = data.details || null;
+                throw error;
             }
 
         } catch (err) {
             console.error('Analysis Error:', err);
-            showError(err.message || '发生未知错误，请稍后重试');
+
+            // 提取错误信息
+            let errorMessage = err.message || '发生未知错误，请稍后重试';
+            let errorCode = null;
+            let errorDetails = null;
+
+            // 如果错误对象包含详细信息，提取它们
+            if (err.code) {
+                errorCode = err.code;
+            }
+
+            if (err.details) {
+                errorDetails = err.details;
+            }
+
+            showError(errorMessage, errorCode, errorDetails);
         } finally {
             loading.classList.remove('active');
             submitBtn.disabled = false;
@@ -216,9 +277,54 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * 显示错误信息
      */
-    function showError(message) {
-        error.textContent = `❌ 错误: ${message}`;
+    function showError(message, errorCode = null, details = null) {
+        let errorHtml = `❌ 错误: ${message}`;
+
+        if (errorCode) {
+            errorHtml += `<br><strong>错误代码:</strong> ${errorCode}`;
+        }
+
+        if (details) {
+            errorHtml += '<br><strong>详细信息:</strong><br>';
+            if (typeof details === 'object') {
+                errorHtml += '<pre style="background: #fff; padding: 10px; border-radius: 5px; margin-top: 5px; overflow-x: auto;">' +
+                             JSON.stringify(details, null, 2) +
+                             '</pre>';
+            } else {
+                errorHtml += details;
+            }
+        }
+
+        error.innerHTML = errorHtml;
         error.classList.add('active');
         error.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 });
+
+/**
+ * 下载服务器日志
+ */
+async function downloadLogs() {
+    try {
+        const response = await fetch('/api/logs/download');
+
+        if (!response.ok) {
+            throw new Error('下载日志失败');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bazi-server-logs-${new Date().toISOString().replace(/:/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        alert('✅ 日志文件下载成功！');
+    } catch (err) {
+        console.error('Download logs error:', err);
+        alert('❌ 下载日志失败: ' + err.message);
+    }
+}
