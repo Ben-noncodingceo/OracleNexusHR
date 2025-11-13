@@ -7,14 +7,58 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// 日志收集
+const logs = [];
+const MAX_LOGS = 1000;
+
+function addLog(level, category, message, data = null) {
+    const logEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        category,
+        message,
+        data
+    };
+
+    logs.push(logEntry);
+
+    // 限制日志数量
+    if (logs.length > MAX_LOGS) {
+        logs.shift();
+    }
+
+    // 同时输出到控制台
+    const logMessage = `[${logEntry.timestamp}] [${level}] [${category}] ${message}`;
+    if (level === 'ERROR') {
+        console.error(logMessage, data || '');
+    } else {
+        console.log(logMessage, data || '');
+    }
+}
 
 // 中间件
 app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
+
+// 请求日志中间件
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+        addLog('INFO', 'REQUEST', `${req.method} ${req.path}`, {
+            body: req.body,
+            headers: {
+                'content-type': req.headers['content-type'],
+                'user-agent': req.headers['user-agent']
+            }
+        });
+    }
+    next();
+});
 
 /**
  * 获取 API 配置
@@ -23,8 +67,6 @@ function getAPIConfig(apiProvider, customApiUrl, customModel) {
     let apiUrl, model;
 
     if (apiProvider === 'deepseek') {
-        // DeepSeek 官方文档: base_url 为 https://api.deepseek.com
-        // 完整端点为 https://api.deepseek.com/v1/chat/completions
         apiUrl = 'https://api.deepseek.com/v1/chat/completions';
         model = 'deepseek-chat';
     } else if (apiProvider === 'openai') {
@@ -46,9 +88,11 @@ function getAPIConfig(apiProvider, customApiUrl, customModel) {
 async function callChatAPI(apiUrl, apiKey, model, messages, maxTokens = 2000) {
     const fetch = (await import('node-fetch')).default;
 
-    console.log(`[API调用] URL: ${apiUrl}`);
-    console.log(`[API调用] 模型: ${model}`);
-    console.log(`[API调用] API Key 前缀: ${apiKey.substring(0, 20)}...`);
+    addLog('INFO', 'API_CALL', 'API调用开始', {
+        url: apiUrl,
+        model: model,
+        apiKeyPrefix: apiKey.substring(0, 20) + '...'
+    });
 
     const requestBody = {
         model: model,
@@ -57,34 +101,61 @@ async function callChatAPI(apiUrl, apiKey, model, messages, maxTokens = 2000) {
         temperature: 0.7
     };
 
-    console.log('[API调用] 请求体:', JSON.stringify(requestBody, null, 2));
+    addLog('DEBUG', 'API_CALL', '请求体', requestBody);
 
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-    });
+    let response;
+    try {
+        response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (fetchError) {
+        addLog('ERROR', 'API_CALL', '网络请求失败', {
+            error: fetchError.message,
+            code: fetchError.code,
+            type: fetchError.type
+        });
 
-    console.log(`[API调用] HTTP 状态: ${response.status}`);
+        throw {
+            code: 'NETWORK_ERROR',
+            message: `网络请求失败: ${fetchError.message}`,
+            details: {
+                errorType: fetchError.type,
+                errorCode: fetchError.code,
+                url: apiUrl
+            }
+        };
+    }
+
+    addLog('INFO', 'API_CALL', `HTTP响应状态: ${response.status}`);
 
     const responseText = await response.text();
-    console.log(`[API调用] 响应长度: ${responseText.length} 字符`);
+    addLog('DEBUG', 'API_CALL', `响应内容长度: ${responseText.length} 字符`);
 
     if (!response.ok) {
-        console.error('[API调用] ❌ 请求失败');
-        console.error('[API调用] 响应内容:', responseText);
+        addLog('ERROR', 'API_CALL', 'API请求失败', {
+            status: response.status,
+            statusText: response.statusText,
+            response: responseText.substring(0, 1000)
+        });
+
+        let errorDetails = {
+            httpStatus: response.status,
+            statusText: response.statusText,
+            url: apiUrl
+        };
 
         let errorMessage = `API 请求失败 (HTTP ${response.status})`;
 
         try {
             const errorJson = JSON.parse(responseText);
-            console.error('[API调用] 错误详情:', JSON.stringify(errorJson, null, 2));
+            errorDetails.errorData = errorJson;
 
-            // 提取错误信息
             if (errorJson.error) {
                 if (typeof errorJson.error === 'string') {
                     errorMessage = errorJson.error;
@@ -97,14 +168,18 @@ async function callChatAPI(apiUrl, apiKey, model, messages, maxTokens = 2000) {
                 errorMessage = errorJson.message;
             }
         } catch (parseError) {
-            console.error('[API调用] 无法解析错误响应为 JSON');
+            errorDetails.rawResponse = responseText.substring(0, 500);
         }
 
-        throw new Error(errorMessage);
+        throw {
+            code: `HTTP_${response.status}`,
+            message: errorMessage,
+            details: errorDetails
+        };
     }
 
     const data = JSON.parse(responseText);
-    console.log('[API调用] ✅ 请求成功');
+    addLog('INFO', 'API_CALL', 'API调用成功');
 
     return data;
 }
@@ -115,11 +190,14 @@ async function callChatAPI(apiUrl, apiKey, model, messages, maxTokens = 2000) {
 async function testAIConnection(apiConfig) {
     const { apiProvider, apiKey, customApiUrl, customModel } = apiConfig;
 
-    console.log('\n========== API 连接测试 ==========');
-    console.log(`提供商: ${apiProvider}`);
+    addLog('INFO', 'TEST', '开始API连接测试', { provider: apiProvider });
 
     if (!apiKey) {
-        throw new Error('API Key 未提供');
+        throw {
+            code: 'MISSING_API_KEY',
+            message: 'API Key 未提供',
+            details: {}
+        };
     }
 
     try {
@@ -134,8 +212,7 @@ async function testAIConnection(apiConfig) {
 
         const data = await callChatAPI(apiUrl, apiKey, model, messages, 50);
 
-        console.log('[测试] ✅ API 连接成功');
-        console.log('========== 测试成功 ==========\n');
+        addLog('INFO', 'TEST', 'API连接测试成功');
 
         return {
             success: true,
@@ -144,9 +221,7 @@ async function testAIConnection(apiConfig) {
         };
 
     } catch (error) {
-        console.error('\n========== API 测试失败 ==========');
-        console.error('错误:', error.message);
-        console.error('=====================================\n');
+        addLog('ERROR', 'TEST', 'API连接测试失败', error);
         throw error;
     }
 }
@@ -157,19 +232,24 @@ async function testAIConnection(apiConfig) {
 async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
     const { apiProvider, apiKey, customApiUrl, customModel } = apiConfig;
 
-    console.log('\n========== 命理分析开始 ==========');
-    console.log(`姓名: ${name}`);
-    console.log(`出生: ${birthdate} ${birthtime}`);
-    console.log(`提供商: ${apiProvider}`);
+    addLog('INFO', 'ANALYZE', '开始命理分析', {
+        name,
+        birthdate,
+        birthtime,
+        provider: apiProvider
+    });
 
     if (!apiKey) {
-        throw new Error('API Key 未提供');
+        throw {
+            code: 'MISSING_API_KEY',
+            message: 'API Key 未提供',
+            details: {}
+        };
     }
 
     try {
         const { apiUrl, model } = getAPIConfig(apiProvider, customApiUrl, customModel);
 
-        // 构建提示词
         const systemPrompt = '你是一位资深的命理学大师，精通生辰八字、五行八卦、易经周易、星座学和月相学等传统命理学知识。你的分析专业、准确、富有洞察力。你总是以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。';
 
         const userPrompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学和月相学。
@@ -217,64 +297,77 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
 
         const data = await callChatAPI(apiUrl, apiKey, model, messages, 2000);
 
-        // 验证响应格式
         if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.error('[分析] 响应格式错误:', JSON.stringify(data).substring(0, 500));
-            throw new Error('AI 响应格式不正确');
+            addLog('ERROR', 'ANALYZE', 'AI响应格式错误', data);
+            throw {
+                code: 'INVALID_RESPONSE_FORMAT',
+                message: 'AI 响应格式不正确',
+                details: { response: data }
+            };
         }
 
         const aiResponse = data.choices[0].message.content;
-        console.log('[分析] AI 返回内容长度:', aiResponse.length);
-        console.log('[分析] AI 返回预览:', aiResponse.substring(0, 300));
+        addLog('DEBUG', 'ANALYZE', `AI返回内容长度: ${aiResponse.length}`);
 
-        // 解析 JSON
         let analysisResult;
         try {
             let cleanedResponse = aiResponse.trim();
 
-            // 移除可能的 markdown 标记
             if (cleanedResponse.startsWith('```json')) {
                 cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/```\s*$/, '');
             } else if (cleanedResponse.startsWith('```')) {
                 cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/```\s*$/, '');
             }
 
-            // 尝试提取 JSON 对象
             const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 cleanedResponse = jsonMatch[0];
             }
 
             analysisResult = JSON.parse(cleanedResponse);
-            console.log('[分析] ✅ JSON 解析成功');
+            addLog('INFO', 'ANALYZE', 'JSON解析成功');
 
         } catch (parseError) {
-            console.error('\n========== JSON 解析失败 ==========');
-            console.error('解析错误:', parseError.message);
-            console.error('AI 原始返回（前 1000 字符）:');
-            console.error(aiResponse.substring(0, 1000));
-            console.error('=====================================\n');
-            throw new Error('AI 返回的数据格式不正确，请重试');
+            addLog('ERROR', 'ANALYZE', 'JSON解析失败', {
+                error: parseError.message,
+                aiResponse: aiResponse.substring(0, 1000)
+            });
+
+            throw {
+                code: 'JSON_PARSE_ERROR',
+                message: 'AI 返回的数据格式不正确',
+                details: {
+                    parseError: parseError.message,
+                    aiResponse: aiResponse.substring(0, 500)
+                }
+            };
         }
 
-        // 验证数据结构
         if (!analysisResult.bazi || !analysisResult.advice) {
-            console.error('[分析] 数据结构不完整');
-            throw new Error('AI 返回的数据不完整，请重试');
+            addLog('ERROR', 'ANALYZE', '数据结构不完整', analysisResult);
+            throw {
+                code: 'INCOMPLETE_DATA',
+                message: 'AI 返回的数据不完整',
+                details: { result: analysisResult }
+            };
         }
 
-        console.log('[分析] ✅ 命理分析完成');
-        console.log('========== 分析成功 ==========\n');
+        addLog('INFO', 'ANALYZE', '命理分析完成');
 
         return analysisResult;
 
     } catch (error) {
-        console.error('\n========== 分析失败 ==========');
-        console.error('错误:', error.message);
-        if (error.stack) {
-            console.error('堆栈:', error.stack.split('\n').slice(0, 3).join('\n'));
+        if (!error.code) {
+            addLog('ERROR', 'ANALYZE', '未知错误', {
+                message: error.message,
+                stack: error.stack
+            });
+            throw {
+                code: 'UNKNOWN_ERROR',
+                message: error.message || '分析过程中发生未知错误',
+                details: { error: error.toString() }
+            };
         }
-        console.error('=====================================\n');
         throw error;
     }
 }
@@ -289,6 +382,7 @@ app.post('/api/test', async (req, res) => {
         if (!apiProvider || !apiKey) {
             return res.status(400).json({
                 success: false,
+                code: 'MISSING_PARAMETERS',
                 error: '请配置 AI API 信息'
             });
         }
@@ -296,6 +390,7 @@ app.post('/api/test', async (req, res) => {
         if (apiProvider === 'custom' && (!customApiUrl || !customModel)) {
             return res.status(400).json({
                 success: false,
+                code: 'MISSING_CUSTOM_CONFIG',
                 error: '使用自定义 API 时，请提供 API URL 和模型名称'
             });
         }
@@ -316,7 +411,9 @@ app.post('/api/test', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message || 'API 测试失败'
+            code: error.code || 'UNKNOWN_ERROR',
+            error: error.message || 'API 测试失败',
+            details: error.details || {}
         });
     }
 });
@@ -331,6 +428,7 @@ app.post('/api/analyze', async (req, res) => {
         if (!name || !birthdate || !birthtime) {
             return res.status(400).json({
                 success: false,
+                code: 'MISSING_BIRTH_INFO',
                 error: '请提供完整的姓名、出生日期和时间'
             });
         }
@@ -338,6 +436,7 @@ app.post('/api/analyze', async (req, res) => {
         if (!apiProvider || !apiKey) {
             return res.status(400).json({
                 success: false,
+                code: 'MISSING_API_CONFIG',
                 error: '请配置 AI API 信息'
             });
         }
@@ -345,6 +444,7 @@ app.post('/api/analyze', async (req, res) => {
         if (apiProvider === 'custom' && (!customApiUrl || !customModel)) {
             return res.status(400).json({
                 success: false,
+                code: 'MISSING_CUSTOM_CONFIG',
                 error: '使用自定义 API 时，请提供 API URL 和模型名称'
             });
         }
@@ -373,9 +473,49 @@ app.post('/api/analyze', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message || '分析过程中发生错误'
+            code: error.code || 'UNKNOWN_ERROR',
+            error: error.message || '分析过程中发生错误',
+            details: error.details || {}
         });
     }
+});
+
+/**
+ * 获取服务器日志
+ */
+app.get('/api/logs', (req, res) => {
+    res.json({
+        success: true,
+        logs: logs,
+        count: logs.length
+    });
+});
+
+/**
+ * 下载服务器日志
+ */
+app.get('/api/logs/download', (req, res) => {
+    const logText = logs.map(log => {
+        const data = log.data ? `\n${JSON.stringify(log.data, null, 2)}` : '';
+        return `[${log.timestamp}] [${log.level}] [${log.category}] ${log.message}${data}`;
+    }).join('\n\n');
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="bazi-server-logs-${Date.now()}.txt"`);
+    res.send(logText);
+});
+
+/**
+ * 清除服务器日志
+ */
+app.post('/api/logs/clear', (req, res) => {
+    const count = logs.length;
+    logs.length = 0;
+    addLog('INFO', 'SYSTEM', `日志已清除 (共 ${count} 条)`);
+    res.json({
+        success: true,
+        message: `已清除 ${count} 条日志`
+    });
 });
 
 /**
@@ -385,7 +525,8 @@ app.get('/api/health', (req, res) => {
     res.json({
         success: true,
         message: 'Server is running',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        logsCount: logs.length
     });
 });
 
@@ -398,19 +539,26 @@ app.get('/', (req, res) => {
 
 // 启动服务器
 app.listen(PORT, () => {
+    addLog('INFO', 'SYSTEM', '八字命理分析系统已启动', {
+        port: PORT,
+        endpoints: {
+            analyze: `http://localhost:${PORT}/api/analyze`,
+            test: `http://localhost:${PORT}/api/test`,
+            logs: `http://localhost:${PORT}/api/logs`,
+            logsDownload: `http://localhost:${PORT}/api/logs/download`
+        }
+    });
+
     console.log('\n========================================');
     console.log('🔮 八字命理分析系统已启动');
     console.log(`🌐 服务器地址: http://localhost:${PORT}`);
     console.log(`📡 分析端点: http://localhost:${PORT}/api/analyze`);
     console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
+    console.log(`📋 查看日志: http://localhost:${PORT}/api/logs`);
+    console.log(`💾 下载日志: http://localhost:${PORT}/api/logs/download`);
     console.log('');
     console.log('✨ 基于 DeepSeek 官方文档重构');
     console.log('📝 请在前端界面配置您的 API Key');
-    console.log('');
-    console.log('🔍 API 配置：');
-    console.log('   - DeepSeek: https://api.deepseek.com/v1/chat/completions');
-    console.log('   - OpenAI: https://api.openai.com/v1/chat/completions');
-    console.log('   - 模型: deepseek-chat / gpt-4o-mini');
     console.log('========================================\n');
 });
 
