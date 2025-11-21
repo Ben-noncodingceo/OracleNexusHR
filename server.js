@@ -660,29 +660,35 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 启动服务器
-app.listen(PORT, () => {
-    addLog('INFO', 'SYSTEM', '八字命理分析系统已启动', {
-        port: PORT,
-        endpoints: {
-            analyze: `http://localhost:${PORT}/api/analyze`,
-            test: `http://localhost:${PORT}/api/test`,
-            logs: `http://localhost:${PORT}/api/logs`,
-            logsDownload: `http://localhost:${PORT}/api/logs/download`
-        }
+// 启动服务器（仅在本地开发环境）
+// Vercel/Netlify 等部署平台会自动处理请求，不需要 listen
+if (!process.env.VERCEL && !process.env.NETLIFY) {
+    app.listen(PORT, () => {
+        addLog('INFO', 'SYSTEM', '八字命理分析系统已启动', {
+            port: PORT,
+            endpoints: {
+                analyze: `http://localhost:${PORT}/api/analyze`,
+                test: `http://localhost:${PORT}/api/test`,
+                logs: `http://localhost:${PORT}/api/logs`,
+                logsDownload: `http://localhost:${PORT}/api/logs/download`
+            }
+        });
+
+        console.log('\n========================================');
+        console.log('🔮 八字命理分析系统已启动');
+        console.log(`🌐 服务器地址: http://localhost:${PORT}`);
+        console.log(`📡 分析端点: http://localhost:${PORT}/api/analyze`);
+        console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
+        console.log(`📋 查看日志: http://localhost:${PORT}/api/logs`);
+        console.log(`💾 下载日志: http://localhost:${PORT}/api/logs/download`);
+        console.log('');
+        console.log('✨ 基于 DeepSeek 官方文档重构');
+        console.log('📝 请在前端界面配置您的 API Key');
+        console.log('========================================\n');
     });
+} else {
+    console.log('🚀 Running in serverless environment (Vercel/Netlify)');
+}
 
-    console.log('\n========================================');
-    console.log('🔮 八字命理分析系统已启动');
-    console.log(`🌐 服务器地址: http://localhost:${PORT}`);
-    console.log(`📡 分析端点: http://localhost:${PORT}/api/analyze`);
-    console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
-    console.log(`📋 查看日志: http://localhost:${PORT}/api/logs`);
-    console.log(`💾 下载日志: http://localhost:${PORT}/api/logs/download`);
-    console.log('');
-    console.log('✨ 基于 DeepSeek 官方文档重构');
-    console.log('📝 请在前端界面配置您的 API Key');
-    console.log('========================================\n');
-});
-
+// 导出 Express 应用供 Vercel 等无服务器平台使用
 module.exports = app;
