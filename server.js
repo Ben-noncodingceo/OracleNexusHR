@@ -227,15 +227,98 @@ async function testAIConnection(apiConfig) {
 }
 
 /**
+ * 识别城市地理信息
+ */
+async function identifyCityLocation(cityName, apiUrl, apiKey, model) {
+    addLog('INFO', 'CITY_LOOKUP', '开始识别城市信息', { city: cityName });
+
+    const messages = [
+        {
+            role: 'system',
+            content: '你是一个地理信息专家，精通中国各省市的地理位置信息。你总是以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。'
+        },
+        {
+            role: 'user',
+            content: `请识别以下城市的地理信息：${cityName}
+
+【要求】
+1. 识别城市所在的省份/自治区/直辖市
+2. 提供城市的经纬度坐标（精确到小数点后1位）
+3. 如果是县级市或区，请给出地级市名称
+
+返回纯JSON格式（不要任何markdown标记）：
+{
+  "city": "城市名称（标准名称）",
+  "province": "所在省份/自治区/直辖市",
+  "latitude": 纬度数字（小数点后1位，如39.9）,
+  "longitude": 经度数字（小数点后1位，如116.4）
+}
+
+请立即返回JSON结果：`
+        }
+    ];
+
+    try {
+        const data = await callChatAPI(apiUrl, apiKey, model, messages, 200);
+        const responseText = data.choices[0].message.content.trim();
+
+        // 清理并解析 JSON
+        let cleanedResponse = responseText;
+        if (cleanedResponse.startsWith('```json')) {
+            cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+        } else if (cleanedResponse.startsWith('```')) {
+            cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/```\s*$/, '');
+        }
+
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            cleanedResponse = jsonMatch[0];
+        }
+
+        const locationInfo = JSON.parse(cleanedResponse);
+
+        // 验证数据完整性
+        if (!locationInfo.city || !locationInfo.province ||
+            typeof locationInfo.latitude !== 'number' ||
+            typeof locationInfo.longitude !== 'number') {
+            throw new Error('城市信息不完整');
+        }
+
+        // 确保精度为小数点后1位
+        locationInfo.latitude = Math.round(locationInfo.latitude * 10) / 10;
+        locationInfo.longitude = Math.round(locationInfo.longitude * 10) / 10;
+
+        addLog('INFO', 'CITY_LOOKUP', '城市识别成功', locationInfo);
+        return locationInfo;
+
+    } catch (error) {
+        addLog('ERROR', 'CITY_LOOKUP', '城市识别失败', {
+            error: error.message,
+            city: cityName
+        });
+
+        // 返回默认值，不阻断流程
+        return {
+            city: cityName,
+            province: '未知',
+            latitude: 0,
+            longitude: 0
+        };
+    }
+}
+
+/**
  * 调用 AI API 进行完整的命理分析
  */
-async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
+async function analyzeWithAI(name, gender, birthdate, birthtime, birthCity, apiConfig) {
     const { apiProvider, apiKey, customApiUrl, customModel } = apiConfig;
 
     addLog('INFO', 'ANALYZE', '开始命理分析', {
         name,
+        gender,
         birthdate,
         birthtime,
+        birthCity,
         provider: apiProvider
     });
 
@@ -250,17 +333,33 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
     try {
         const { apiUrl, model } = getAPIConfig(apiProvider, customApiUrl, customModel);
 
-        const systemPrompt = '你是一位资深的命理学大师，精通生辰八字、五行八卦、易经周易、星座学和月相学等传统命理学知识。你的分析专业、准确、富有洞察力。你总是以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。';
+        // 首先识别城市地理信息
+        const locationInfo = await identifyCityLocation(birthCity, apiUrl, apiKey, model);
 
-        const userPrompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学和月相学。
+        const systemPrompt = '你是一位资深的命理学大师，精通生辰八字、五行八卦、易经周易、星座学、月相学和真太阳时计算等传统命理学知识。你的分析专业、准确、富有洞察力。你总是以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。';
+
+        const userPrompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学、月相学和真太阳时计算。
 
 【任务】
-请根据以下信息进行完整的命理分析：
-- 姓名：${name}
-- 出生日期：${birthdate}（公历）
-- 出生时间：${birthtime}（24小时制）
+请根据以下信息进行完整且精确的命理分析：
 
-【要求】
+【个人信息】
+- 姓名：${name}
+- 性别：${gender}
+- 出生日期：${birthdate}（公历）
+- 出生时间：${birthtime}（24小时制，当地时间）
+
+【出生地信息】（用于精确计算真太阳时）
+- 出生城市：${locationInfo.city}
+- 所在省份：${locationInfo.province}
+- 地理坐标：北纬 ${locationInfo.latitude}°, 东经 ${locationInfo.longitude}°
+
+【重要计算要求】
+1. **真太阳时校正**：根据经度 ${locationInfo.longitude}° 计算真太阳时，北京时间（东经120°）与当地时间差 = (120 - ${locationInfo.longitude}) / 15 小时
+2. **时柱计算**：必须基于真太阳时确定正确的时辰（子丑寅卯辰巳午未申酉戌亥）
+3. **性别特征**：根据性别 ${gender} 调整命理分析的侧重点和建议
+
+【返回格式】
 请按照以下JSON格式返回分析结果，确保返回的是**纯JSON格式**，不要包含任何markdown标记（如\`\`\`json）或其他额外文字：
 
 {
@@ -268,25 +367,28 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
     "yearPillar": "年柱（如：甲子）",
     "monthPillar": "月柱（如：乙丑）",
     "dayPillar": "日柱（如：丙寅）",
-    "hourPillar": "时柱（如：丁卯）",
+    "hourPillar": "时柱（如：丁卯）- 基于真太阳时计算",
     "zodiac": "星座（如：白羊座）",
     "moonPhase": "月相（如：满月 🌕）"
   },
-  "advice": "200字左右的八字命理分析和建议，包括五行属性、性格特点、适合的职业方向、人生建议",
-  "zodiacAdvice": "150字左右的星座运势建议",
-  "moonAdvice": "150字左右的月相能量指引",
-  "gender": "根据姓名推测的性别（男/女/未知）"
+  "advice": "300字左右的八字命理分析和建议，必须包括：五行属性、五行强弱分析、喜用神、性格特点（结合性别特征）、适合的职业方向、婚恋建议、健康提示、人生建议",
+  "zodiacAdvice": "200字左右的星座运势建议，结合性别 ${gender} 的特点",
+  "moonAdvice": "150字左右的月相能量指引，结合出生地 ${locationInfo.city} 的地域特色"
 }
 
-【注意事项】
-1. 年柱：根据公历年份计算天干地支
-2. 月柱：根据年份和月份计算，注意节气
+【分析要点】
+1. 年柱：根据公历年份计算天干地支（注意立春节气）
+2. 月柱：根据年份和月份计算，严格按照节气划分
 3. 日柱：使用万年历算法精确计算
-4. 时柱：根据出生时间确定时辰（子丑寅卯辰巳午未申酉戌亥）
+4. 时柱：**重点** 根据真太阳时确定时辰，经度差异影响时辰判断
 5. 星座：根据公历日期判断12星座
 6. 月相：计算出生当天的月相（新月🌑、娥眉月🌒、上弦月🌓、盈凸月🌔、满月🌕、亏凸月🌖、下弦月🌗、残月🌘）
-7. 所有建议需专业、温暖、具有启发性
-8. 必须返回纯JSON格式，不要添加任何解释文字
+7. 五行分析：统计八字中五行（金木水火土）的数量和强弱
+8. 喜用神：根据五行强弱确定喜用神和忌神
+9. 性别差异：${gender === '男' ? '男命侧重事业、财运、妻财子禄' : gender === '女' ? '女命侧重婚姻、子女、夫妻关系' : '均衡分析各方面'}
+10. 地域特色：结合 ${locationInfo.province} ${locationInfo.city} 的地域文化和风水特点
+11. 所有建议需专业、温暖、具有启发性、符合现代价值观
+12. 必须返回纯JSON格式，不要添加任何解释文字
 
 请立即返回JSON结果：`;
 
@@ -351,6 +453,9 @@ async function analyzeWithAI(name, birthdate, birthtime, apiConfig) {
                 details: { result: analysisResult }
             };
         }
+
+        // 添加地理信息到结果中
+        analysisResult.location = locationInfo;
 
         addLog('INFO', 'ANALYZE', '命理分析完成');
 
@@ -423,13 +528,29 @@ app.post('/api/test', async (req, res) => {
  */
 app.post('/api/analyze', async (req, res) => {
     try {
-        const { name, birthdate, birthtime, apiProvider, apiKey, customApiUrl, customModel } = req.body;
+        const { name, gender, birthdate, birthtime, birthCity, apiProvider, apiKey, customApiUrl, customModel } = req.body;
 
         if (!name || !birthdate || !birthtime) {
             return res.status(400).json({
                 success: false,
                 code: 'MISSING_BIRTH_INFO',
                 error: '请提供完整的姓名、出生日期和时间'
+            });
+        }
+
+        if (!gender) {
+            return res.status(400).json({
+                success: false,
+                code: 'MISSING_GENDER',
+                error: '请选择性别'
+            });
+        }
+
+        if (!birthCity) {
+            return res.status(400).json({
+                success: false,
+                code: 'MISSING_BIRTH_CITY',
+                error: '请提供出生城市'
             });
         }
 
@@ -449,7 +570,7 @@ app.post('/api/analyze', async (req, res) => {
             });
         }
 
-        const analysisResult = await analyzeWithAI(name, birthdate, birthtime, {
+        const analysisResult = await analyzeWithAI(name, gender, birthdate, birthtime, birthCity, {
             apiProvider,
             apiKey,
             customApiUrl,
@@ -460,9 +581,11 @@ app.post('/api/analyze', async (req, res) => {
             success: true,
             data: {
                 name: name,
+                gender: gender,
                 birthdate: birthdate,
                 birthtime: birthtime,
-                gender: analysisResult.gender || '未知',
+                birthCity: birthCity,
+                location: analysisResult.location,
                 bazi: analysisResult.bazi,
                 advice: analysisResult.advice,
                 zodiacAdvice: analysisResult.zodiacAdvice,
@@ -537,29 +660,35 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 启动服务器
-app.listen(PORT, () => {
-    addLog('INFO', 'SYSTEM', '八字命理分析系统已启动', {
-        port: PORT,
-        endpoints: {
-            analyze: `http://localhost:${PORT}/api/analyze`,
-            test: `http://localhost:${PORT}/api/test`,
-            logs: `http://localhost:${PORT}/api/logs`,
-            logsDownload: `http://localhost:${PORT}/api/logs/download`
-        }
+// 启动服务器（仅在本地开发环境）
+// Vercel/Netlify 等部署平台会自动处理请求，不需要 listen
+if (!process.env.VERCEL && !process.env.NETLIFY) {
+    app.listen(PORT, () => {
+        addLog('INFO', 'SYSTEM', '八字命理分析系统已启动', {
+            port: PORT,
+            endpoints: {
+                analyze: `http://localhost:${PORT}/api/analyze`,
+                test: `http://localhost:${PORT}/api/test`,
+                logs: `http://localhost:${PORT}/api/logs`,
+                logsDownload: `http://localhost:${PORT}/api/logs/download`
+            }
+        });
+
+        console.log('\n========================================');
+        console.log('🔮 八字命理分析系统已启动');
+        console.log(`🌐 服务器地址: http://localhost:${PORT}`);
+        console.log(`📡 分析端点: http://localhost:${PORT}/api/analyze`);
+        console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
+        console.log(`📋 查看日志: http://localhost:${PORT}/api/logs`);
+        console.log(`💾 下载日志: http://localhost:${PORT}/api/logs/download`);
+        console.log('');
+        console.log('✨ 基于 DeepSeek 官方文档重构');
+        console.log('📝 请在前端界面配置您的 API Key');
+        console.log('========================================\n');
     });
+} else {
+    console.log('🚀 Running in serverless environment (Vercel/Netlify)');
+}
 
-    console.log('\n========================================');
-    console.log('🔮 八字命理分析系统已启动');
-    console.log(`🌐 服务器地址: http://localhost:${PORT}`);
-    console.log(`📡 分析端点: http://localhost:${PORT}/api/analyze`);
-    console.log(`🧪 测试端点: http://localhost:${PORT}/api/test`);
-    console.log(`📋 查看日志: http://localhost:${PORT}/api/logs`);
-    console.log(`💾 下载日志: http://localhost:${PORT}/api/logs/download`);
-    console.log('');
-    console.log('✨ 基于 DeepSeek 官方文档重构');
-    console.log('📝 请在前端界面配置您的 API Key');
-    console.log('========================================\n');
-});
-
+// 导出 Express 应用供 Vercel 等无服务器平台使用
 module.exports = app;

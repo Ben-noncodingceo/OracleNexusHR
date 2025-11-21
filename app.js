@@ -129,8 +129,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 获取表单数据
         const formData = {
             name: document.getElementById('name').value,
+            gender: document.getElementById('gender').value,
             birthdate: document.getElementById('birthdate').value,
             birthtime: document.getElementById('birthtime').value,
+            birthCity: document.getElementById('birthCity').value,
             apiProvider: apiProvider.value,
             apiKey: document.getElementById('apiKey').value
         };
@@ -150,8 +152,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             console.log('发送分析请求:', {
                 name: formData.name,
+                gender: formData.gender,
                 birthdate: formData.birthdate,
                 birthtime: formData.birthtime,
+                birthCity: formData.birthCity,
                 apiProvider: formData.apiProvider
             });
 
@@ -256,6 +260,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('resultDate').textContent = data.birthdate;
         document.getElementById('resultTime').textContent = data.birthtime;
 
+        // 地理信息
+        if (data.location) {
+            document.getElementById('resultCity').textContent = data.location.city || data.birthCity || '未知';
+            document.getElementById('resultProvince').textContent = data.location.province || '未知';
+            const coords = data.location.latitude && data.location.longitude
+                ? `北纬 ${data.location.latitude}°, 东经 ${data.location.longitude}°`
+                : '未知';
+            document.getElementById('resultCoordinates').textContent = coords;
+        } else {
+            document.getElementById('resultCity').textContent = data.birthCity || '未知';
+            document.getElementById('resultProvince').textContent = '未知';
+            document.getElementById('resultCoordinates').textContent = '未知';
+        }
+
         // 八字四柱
         document.getElementById('yearPillar').textContent = data.bazi.yearPillar || '计算中';
         document.getElementById('monthPillar').textContent = data.bazi.monthPillar || '计算中';
@@ -340,11 +358,29 @@ async function checkServerStatus() {
     const serverStatus = document.getElementById('serverStatus');
     if (!serverStatus) return;
 
+    // 检测是否在部署环境（Vercel/Netlify等）
+    const isDeployed = window.location.hostname !== 'localhost' &&
+                       window.location.hostname !== '127.0.0.1' &&
+                       !window.location.hostname.startsWith('192.168.');
+
+    if (isDeployed) {
+        // 在部署环境中，隐藏服务器状态检查
+        serverStatus.style.display = 'none';
+        console.log('部署环境检测到，跳过服务器状态检查');
+        return;
+    }
+
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
+
         const response = await fetch('/api/health', {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             const data = await response.json();
@@ -356,30 +392,34 @@ async function checkServerStatus() {
         }
     } catch (err) {
         console.error('服务器状态检查失败:', err);
-        serverStatus.innerHTML = '🔴 服务器未启动<br><small>请运行: npm start</small>';
-        serverStatus.className = 'server-status offline';
 
-        // 禁用提交按钮
-        const submitBtn = document.getElementById('submitBtn');
-        const testApiBtn = document.getElementById('testApiBtn');
-        if (submitBtn) submitBtn.disabled = true;
-        if (testApiBtn) testApiBtn.disabled = true;
+        // 只在本地环境显示详细错误
+        if (!isDeployed) {
+            serverStatus.innerHTML = '🔴 服务器未启动<br><small>请运行: npm start</small>';
+            serverStatus.className = 'server-status offline';
 
-        // 显示错误提示
-        setTimeout(() => {
-            const errorDiv = document.getElementById('error');
-            if (errorDiv) {
-                errorDiv.innerHTML = `
-                    <strong>⚠️ 服务器未启动</strong><br><br>
-                    请按照以下步骤启动服务器：<br>
-                    1. 打开终端/命令行<br>
-                    2. 进入项目目录<br>
-                    3. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm install</code> (首次运行)<br>
-                    4. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm start</code><br>
-                    5. 刷新本页面
-                `;
-                errorDiv.classList.add('active');
-            }
-        }, 500);
+            // 禁用提交按钮
+            const submitBtn = document.getElementById('submitBtn');
+            const testApiBtn = document.getElementById('testApiBtn');
+            if (submitBtn) submitBtn.disabled = true;
+            if (testApiBtn) testApiBtn.disabled = true;
+
+            // 显示错误提示
+            setTimeout(() => {
+                const errorDiv = document.getElementById('error');
+                if (errorDiv) {
+                    errorDiv.innerHTML = `
+                        <strong>⚠️ 服务器未启动</strong><br><br>
+                        请按照以下步骤启动服务器：<br>
+                        1. 打开终端/命令行<br>
+                        2. 进入项目目录<br>
+                        3. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm install</code> (首次运行)<br>
+                        4. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm start</code><br>
+                        5. 刷新本页面
+                    `;
+                    errorDiv.classList.add('active');
+                }
+            }, 500);
+        }
     }
 }
