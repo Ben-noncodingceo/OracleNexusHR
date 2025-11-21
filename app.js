@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         apiStatus.classList.remove('active');
     });
 
-    // 测试 API 连接（直接调用）
+    // 测试 API 连接（支持后端代理和直接调用）
     testApiBtn.addEventListener('click', async () => {
         const apiKey = document.getElementById('apiKey').value;
 
@@ -75,21 +75,48 @@ document.addEventListener('DOMContentLoaded', () => {
         testApiBtn.disabled = true;
 
         try {
-            // 获取 API 配置
-            const { apiUrl, model } = getAPIConfig(provider, customApiUrl.value, customModel.value);
+            // 优先尝试使用后端 API（Cloudflare/Vercel）
+            const useBackend = await checkBackendAvailable();
 
-            // 发送测试消息
-            const messages = [
-                { role: 'system', content: '你是一个测试助手。' },
-                { role: 'user', content: '请回复"测试成功"来确认连接正常。' }
-            ];
+            if (useBackend) {
+                console.log('使用后端 API 进行测试');
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        apiProvider: provider,
+                        apiKey: apiKey,
+                        customApiUrl: customApiUrl.value,
+                        customModel: customModel.value
+                    })
+                });
 
-            const data = await callAIAPI(apiUrl, apiKey, model, messages, 50);
+                const data = await response.json();
 
-            if (data && data.choices && data.choices[0]) {
-                showApiStatus(`✅ API 连接成功！模型：${model}`, 'success');
+                if (data.success) {
+                    showApiStatus(`✅ API 连接成功！模型：${data.model}`, 'success');
+                } else {
+                    throw new Error(data.error || 'API 测试失败');
+                }
             } else {
-                throw new Error('API 返回数据格式异常');
+                console.log('使用前端直接调用进行测试');
+                // 回退到直接调用（GitHub Pages）
+                const { apiUrl, model } = getAPIConfig(provider, customApiUrl.value, customModel.value);
+
+                const messages = [
+                    { role: 'system', content: '你是一个测试助手。' },
+                    { role: 'user', content: '请回复"测试成功"来确认连接正常。' }
+                ];
+
+                const data = await callAIAPI(apiUrl, apiKey, model, messages, 50);
+
+                if (data && data.choices && data.choices[0]) {
+                    showApiStatus(`✅ API 连接成功！模型：${model}`, 'success');
+                } else {
+                    throw new Error('API 返回数据格式异常');
+                }
             }
 
         } catch (err) {
@@ -137,18 +164,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 apiProvider: formData.apiProvider
             });
 
-            // 直接从前端调用 AI API（GitHub Pages 版本）
-            const analysisResult = await analyzeWithAIDirect(
-                formData.name,
-                formData.gender,
-                formData.birthdate,
-                formData.birthtime,
-                formData.birthCity,
-                formData.apiProvider,
-                formData.apiKey,
-                formData.customApiUrl,
-                formData.customModel
-            );
+            let analysisResult;
+
+            // 优先尝试使用后端 API（Cloudflare/Vercel）
+            const useBackend = await checkBackendAvailable();
+
+            if (useBackend) {
+                console.log('使用后端 API 进行分析');
+                // 使用后端代理（避免 CORS 问题）
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '分析失败');
+                }
+
+                analysisResult = data.data;
+            } else {
+                console.log('使用前端直接调用进行分析');
+                // 回退到前端直接调用（GitHub Pages）
+                analysisResult = await analyzeWithAIDirect(
+                    formData.name,
+                    formData.gender,
+                    formData.birthdate,
+                    formData.birthtime,
+                    formData.birthCity,
+                    formData.apiProvider,
+                    formData.apiKey,
+                    formData.customApiUrl,
+                    formData.customModel
+                );
+            }
 
             // 显示结果
             displayResult(analysisResult);
@@ -289,15 +342,64 @@ async function downloadLogs() {
 }
 
 /**
- * 检查服务器状态（GitHub Pages 版本不需要服务器）
+ * 检查后端 API 是否可用（用于自动选择调用方式）
+ */
+let backendAvailableCache = null; // 缓存检测结果
+
+async function checkBackendAvailable() {
+    // 如果已经检测过，返回缓存结果
+    if (backendAvailableCache !== null) {
+        return backendAvailableCache;
+    }
+
+    try {
+        // 尝试访问后端健康检查端点（快速超时）
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
+
+        const response = await fetch('/api/test', {
+            method: 'OPTIONS', // 使用 OPTIONS 检查端点是否存在
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        // 如果响应成功或返回 204（Cloudflare Functions 的 CORS 响应），说明后端可用
+        backendAvailableCache = response.ok || response.status === 204;
+        console.log('后端 API 检测结果:', backendAvailableCache ? '可用' : '不可用');
+        return backendAvailableCache;
+
+    } catch (error) {
+        // 超时或网络错误，说明后端不可用
+        console.log('后端 API 不可用，将使用前端直接调用');
+        backendAvailableCache = false;
+        return false;
+    }
+}
+
+/**
+ * 检查服务器状态（自动检测环境）
  */
 async function checkServerStatus() {
     const serverStatus = document.getElementById('serverStatus');
     if (!serverStatus) return;
 
-    // GitHub Pages 版本：隐藏服务器状态检查
-    serverStatus.style.display = 'none';
-    console.log('GitHub Pages 版本 - 无需服务器');
+    // 检测后端是否可用
+    const backendAvailable = await checkBackendAvailable();
+
+    if (backendAvailable) {
+        // 有后端 API（Cloudflare/Vercel）
+        serverStatus.innerHTML = '🟢 后端 API 可用（推荐模式）';
+        serverStatus.className = 'server-status online';
+        serverStatus.style.display = 'block';
+        console.log('运行模式: 后端代理（Cloudflare/Vercel）');
+    } else {
+        // 纯前端模式（GitHub Pages）
+        serverStatus.innerHTML = '🔵 前端直接调用模式（GitHub Pages）';
+        serverStatus.className = 'server-status direct-mode';
+        serverStatus.style.display = 'block';
+        console.log('运行模式: 前端直接调用（GitHub Pages）');
+    }
 }
 
 /**
