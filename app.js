@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         apiStatus.classList.remove('active');
     });
 
-    // 测试 API 连接
+    // 测试 API 连接（支持后端代理和直接调用）
     testApiBtn.addEventListener('click', async () => {
         const apiKey = document.getElementById('apiKey').value;
 
@@ -61,18 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const apiConfig = {
-            apiProvider: apiProvider.value,
-            apiKey: apiKey
-        };
+        const provider = apiProvider.value;
 
-        if (apiProvider.value === 'custom') {
+        if (provider === 'custom') {
             if (!customApiUrl.value || !customModel.value) {
                 showApiStatus('请填写完整的自定义 API 配置', 'error');
                 return;
             }
-            apiConfig.customApiUrl = customApiUrl.value;
-            apiConfig.customModel = customModel.value;
         }
 
         // 显示测试中状态
@@ -80,38 +75,48 @@ document.addEventListener('DOMContentLoaded', () => {
         testApiBtn.disabled = true;
 
         try {
-            let response;
-            try {
-                response = await fetch('/api/test', {
+            // 优先尝试使用后端 API（Cloudflare/Vercel）
+            const useBackend = await checkBackendAvailable();
+
+            if (useBackend) {
+                console.log('使用后端 API 进行测试');
+                const response = await fetch('/api/test', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(apiConfig)
+                    body: JSON.stringify({
+                        apiProvider: provider,
+                        apiKey: apiKey,
+                        customApiUrl: customApiUrl.value,
+                        customModel: customModel.value
+                    })
                 });
-            } catch (fetchError) {
-                throw new Error(`网络连接失败: ${fetchError.message}`);
-            }
 
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                throw new Error(`服务器返回数据格式错误 (HTTP ${response.status})`);
-            }
+                const data = await response.json();
 
-            if (!response.ok) {
-                const errorMsg = data.error || 'API 测试失败';
-                const errorCode = data.code ? ` [${data.code}]` : '';
-                throw new Error(errorMsg + errorCode);
-            }
-
-            if (data.success) {
-                showApiStatus(`✅ API 连接成功！模型：${data.model || '未知'}`, 'success');
+                if (data.success) {
+                    showApiStatus(`✅ API 连接成功！模型：${data.model}`, 'success');
+                } else {
+                    throw new Error(data.error || 'API 测试失败');
+                }
             } else {
-                const errorMsg = data.error || 'API 测试失败';
-                const errorCode = data.code ? ` [${data.code}]` : '';
-                throw new Error(errorMsg + errorCode);
+                console.log('使用前端直接调用进行测试');
+                // 回退到直接调用（GitHub Pages）
+                const { apiUrl, model } = getAPIConfig(provider, customApiUrl.value, customModel.value);
+
+                const messages = [
+                    { role: 'system', content: '你是一个测试助手。' },
+                    { role: 'user', content: '请回复"测试成功"来确认连接正常。' }
+                ];
+
+                const data = await callAIAPI(apiUrl, apiKey, model, messages, 50);
+
+                if (data && data.choices && data.choices[0]) {
+                    showApiStatus(`✅ API 连接成功！模型：${model}`, 'success');
+                } else {
+                    throw new Error('API 返回数据格式异常');
+                }
             }
 
         } catch (err) {
@@ -150,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.disabled = true;
 
         try {
-            console.log('发送分析请求:', {
+            console.log('开始分析请求:', {
                 name: formData.name,
                 gender: formData.gender,
                 birthdate: formData.birthdate,
@@ -159,62 +164,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 apiProvider: formData.apiProvider
             });
 
-            // 发送请求到后端
-            let response;
-            try {
-                response = await fetch('/api/analyze', {
+            let analysisResult;
+
+            // 优先尝试使用后端 API（Cloudflare/Vercel）
+            const useBackend = await checkBackendAvailable();
+
+            if (useBackend) {
+                console.log('使用后端 API 进行分析');
+                // 使用后端代理（避免 CORS 问题）
+                const response = await fetch('/api/analyze', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(formData)
                 });
-            } catch (fetchError) {
-                // 网络错误
-                const error = new Error('网络连接失败，请检查网络连接');
-                error.code = 'NETWORK_ERROR';
-                error.details = {
-                    errorType: fetchError.name,
-                    errorMessage: fetchError.message
-                };
-                throw error;
-            }
 
-            console.log('收到响应状态:', response.status);
+                const data = await response.json();
 
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                // JSON 解析错误
-                const error = new Error('服务器返回数据格式错误');
-                error.code = 'JSON_PARSE_ERROR';
-                error.details = {
-                    httpStatus: response.status,
-                    errorMessage: jsonError.message
-                };
-                throw error;
-            }
-            console.log('解析的数据:', data);
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '分析失败');
+                }
 
-            if (!response.ok) {
-                // 创建包含详细信息的错误对象
-                const error = new Error(data.error || `请求失败 (${response.status})`);
-                error.code = data.code || `HTTP_${response.status}`;
-                error.details = data.details || null;
-                throw error;
-            }
-
-            if (data.success) {
-                // 显示结果
-                displayResult(data.data);
+                analysisResult = data.data;
             } else {
-                // 创建包含详细信息的错误对象
-                const error = new Error(data.error || '分析失败');
-                error.code = data.code || 'UNKNOWN_ERROR';
-                error.details = data.details || null;
-                throw error;
+                console.log('使用前端直接调用进行分析');
+                // 回退到前端直接调用（GitHub Pages）
+                analysisResult = await analyzeWithAIDirect(
+                    formData.name,
+                    formData.gender,
+                    formData.birthdate,
+                    formData.birthtime,
+                    formData.birthCity,
+                    formData.apiProvider,
+                    formData.apiKey,
+                    formData.customApiUrl,
+                    formData.customModel
+                );
             }
+
+            // 显示结果
+            displayResult(analysisResult);
 
         } catch (err) {
             console.error('Analysis Error:', err);
@@ -352,74 +342,308 @@ async function downloadLogs() {
 }
 
 /**
- * 检查服务器状态
+ * 检查后端 API 是否可用（用于自动选择调用方式）
  */
-async function checkServerStatus() {
-    const serverStatus = document.getElementById('serverStatus');
-    if (!serverStatus) return;
+let backendAvailableCache = null; // 缓存检测结果
 
-    // 检测是否在部署环境（Vercel/Netlify等）
-    const isDeployed = window.location.hostname !== 'localhost' &&
-                       window.location.hostname !== '127.0.0.1' &&
-                       !window.location.hostname.startsWith('192.168.');
-
-    if (isDeployed) {
-        // 在部署环境中，隐藏服务器状态检查
-        serverStatus.style.display = 'none';
-        console.log('部署环境检测到，跳过服务器状态检查');
-        return;
+async function checkBackendAvailable() {
+    // 如果已经检测过，返回缓存结果
+    if (backendAvailableCache !== null) {
+        return backendAvailableCache;
     }
 
     try {
+        // 尝试访问后端健康检查端点（快速超时）
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
 
-        const response = await fetch('/api/health', {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
+        const response = await fetch('/api/test', {
+            method: 'OPTIONS', // 使用 OPTIONS 检查端点是否存在
             signal: controller.signal
         });
 
         clearTimeout(timeoutId);
 
-        if (response.ok) {
-            const data = await response.json();
-            serverStatus.innerHTML = '🟢 服务器运行正常';
-            serverStatus.className = 'server-status online';
-            console.log('服务器状态:', data);
-        } else {
-            throw new Error('服务器响应异常');
+        // 如果响应成功或返回 204（Cloudflare Functions 的 CORS 响应），说明后端可用
+        backendAvailableCache = response.ok || response.status === 204;
+        console.log('后端 API 检测结果:', backendAvailableCache ? '可用' : '不可用');
+        return backendAvailableCache;
+
+    } catch (error) {
+        // 超时或网络错误，说明后端不可用
+        console.log('后端 API 不可用，将使用前端直接调用');
+        backendAvailableCache = false;
+        return false;
+    }
+}
+
+/**
+ * 检查服务器状态（自动检测环境）
+ */
+async function checkServerStatus() {
+    const serverStatus = document.getElementById('serverStatus');
+    if (!serverStatus) return;
+
+    // 检测后端是否可用
+    const backendAvailable = await checkBackendAvailable();
+
+    if (backendAvailable) {
+        // 有后端 API（Cloudflare/Vercel）
+        serverStatus.innerHTML = '🟢 后端 API 可用（推荐模式）';
+        serverStatus.className = 'server-status online';
+        serverStatus.style.display = 'block';
+        console.log('运行模式: 后端代理（Cloudflare/Vercel）');
+    } else {
+        // 纯前端模式（GitHub Pages）
+        serverStatus.innerHTML = '🔵 前端直接调用模式（GitHub Pages）';
+        serverStatus.className = 'server-status direct-mode';
+        serverStatus.style.display = 'block';
+        console.log('运行模式: 前端直接调用（GitHub Pages）');
+    }
+}
+
+/**
+ * 获取 API 配置
+ */
+function getAPIConfig(apiProvider, customApiUrl, customModel) {
+    let apiUrl, model;
+
+    if (apiProvider === 'deepseek') {
+        apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+        model = 'deepseek-chat';
+    } else if (apiProvider === 'openai') {
+        apiUrl = 'https://api.openai.com/v1/chat/completions';
+        model = 'gpt-4o-mini';
+    } else if (apiProvider === 'custom') {
+        apiUrl = customApiUrl;
+        model = customModel;
+    } else {
+        throw new Error('不支持的 API 提供商');
+    }
+
+    return { apiUrl, model };
+}
+
+/**
+ * 直接调用 AI API
+ */
+async function callAIAPI(apiUrl, apiKey, model, messages, maxTokens = 2000) {
+    console.log('调用 AI API:', { apiUrl, model, messagesCount: messages.length });
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: model,
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: 0.7
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API 请求失败 (${response.status})`);
+    }
+
+    return await response.json();
+}
+
+/**
+ * 识别城市地理信息
+ */
+async function identifyCityLocation(cityName, apiUrl, apiKey, model) {
+    console.log('识别城市信息:', cityName);
+
+    const messages = [
+        {
+            role: 'system',
+            content: '你是一个地理信息专家，精通中国各省市的地理位置信息。你总是以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。'
+        },
+        {
+            role: 'user',
+            content: `请识别以下城市的地理信息：${cityName}
+
+【要求】
+1. 识别城市所在的省份/自治区/直辖市
+2. 提供城市的经纬度坐标（精确到小数点后1位）
+3. 如果是县级市或区，请给出地级市名称
+
+返回纯JSON格式（不要任何markdown标记）：
+{
+  "city": "城市名称（标准名称）",
+  "province": "所在省份/自治区/直辖市",
+  "latitude": 纬度数字（小数点后1位，如39.9）,
+  "longitude": 经度数字（小数点后1位，如116.4）
+}
+
+请立即返回JSON结果：`
         }
-    } catch (err) {
-        console.error('服务器状态检查失败:', err);
+    ];
 
-        // 只在本地环境显示详细错误
-        if (!isDeployed) {
-            serverStatus.innerHTML = '🔴 服务器未启动<br><small>请运行: npm start</small>';
-            serverStatus.className = 'server-status offline';
+    try {
+        const data = await callAIAPI(apiUrl, apiKey, model, messages, 200);
+        let responseText = data.choices[0].message.content.trim();
 
-            // 禁用提交按钮
-            const submitBtn = document.getElementById('submitBtn');
-            const testApiBtn = document.getElementById('testApiBtn');
-            if (submitBtn) submitBtn.disabled = true;
-            if (testApiBtn) testApiBtn.disabled = true;
-
-            // 显示错误提示
-            setTimeout(() => {
-                const errorDiv = document.getElementById('error');
-                if (errorDiv) {
-                    errorDiv.innerHTML = `
-                        <strong>⚠️ 服务器未启动</strong><br><br>
-                        请按照以下步骤启动服务器：<br>
-                        1. 打开终端/命令行<br>
-                        2. 进入项目目录<br>
-                        3. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm install</code> (首次运行)<br>
-                        4. 运行命令: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">npm start</code><br>
-                        5. 刷新本页面
-                    `;
-                    errorDiv.classList.add('active');
-                }
-            }, 500);
+        // 清理 markdown 标记
+        if (responseText.startsWith('```json')) {
+            responseText = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+        } else if (responseText.startsWith('```')) {
+            responseText = responseText.replace(/^```\s*/, '').replace(/```\s*$/, '');
         }
+
+        // 提取 JSON
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            responseText = jsonMatch[0];
+        }
+
+        const locationInfo = JSON.parse(responseText);
+
+        // 确保精度为1位小数
+        locationInfo.latitude = Math.round(locationInfo.latitude * 10) / 10;
+        locationInfo.longitude = Math.round(locationInfo.longitude * 10) / 10;
+
+        console.log('城市识别成功:', locationInfo);
+        return locationInfo;
+
+    } catch (error) {
+        console.error('城市识别失败:', error);
+        // 返回默认值，不阻塞流程
+        return {
+            city: cityName,
+            province: '未知',
+            latitude: 0,
+            longitude: 0
+        };
+    }
+}
+
+/**
+ * 直接使用 AI 进行八字分析（前端版本）
+ */
+async function analyzeWithAIDirect(name, gender, birthdate, birthtime, birthCity, apiProvider, apiKey, customApiUrl, customModel) {
+    console.log('开始八字分析...');
+
+    // 验证输入
+    if (!name || !gender || !birthdate || !birthtime || !birthCity) {
+        throw new Error('请填写完整的个人信息');
+    }
+
+    if (!apiKey) {
+        throw new Error('请提供 API Key');
+    }
+
+    try {
+        // 获取 API 配置
+        const { apiUrl, model } = getAPIConfig(apiProvider, customApiUrl, customModel);
+        console.log('使用 API:', { apiUrl, model });
+
+        // 第一步：识别城市位置
+        const locationInfo = await identifyCityLocation(birthCity, apiUrl, apiKey, model);
+
+        // 第二步：进行八字分析
+        const systemPrompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学、月相学和真太阳时计算。你必须以纯JSON格式返回结果，不包含任何markdown标记或其他额外文字。`;
+
+        const userPrompt = `你是一位精通中国传统命理学的大师，精通生辰八字、五行八卦、星座学、月相学和真太阳时计算。
+
+【任务】
+请根据以下信息进行完整且精确的命理分析：
+
+【个人信息】
+- 姓名：${name}
+- 性别：${gender}
+- 出生日期：${birthdate}（公历）
+- 出生时间：${birthtime}（24小时制，当地时间）
+
+【出生地信息】（用于精确计算真太阳时）
+- 出生城市：${locationInfo.city}
+- 所在省份：${locationInfo.province}
+- 地理坐标：北纬 ${locationInfo.latitude}°, 东经 ${locationInfo.longitude}°
+
+【重要计算要求】
+1. **真太阳时校正**：根据经度 ${locationInfo.longitude}° 计算真太阳时，北京时间（东经120°）与当地时间差 = (120 - ${locationInfo.longitude}) / 15 小时
+2. **时柱计算**：必须基于真太阳时确定正确的时辰（子丑寅卯辰巳午未申酉戌亥）
+3. **性别特征**：根据性别 ${gender} 调整命理分析的侧重点和建议
+
+【分析内容要求】
+1. **生辰八字**：准确计算年柱、月柱、日柱、时柱（基于真太阳时）
+2. **命理建议**：200字左右，结合八字特点给出人生建议
+3. **星座分析**：根据出生日期判断星座，给出运势建议（150字）
+4. **月相指引**：根据农历日期判断月相，给出指引建议（150字）
+
+【输出格式】
+你必须返回纯JSON格式（不要任何markdown标记如\`\`\`json），结构如下：
+
+{
+  "bazi": {
+    "yearPillar": "年柱（天干地支）",
+    "monthPillar": "月柱（天干地支）",
+    "dayPillar": "日柱（天干地支）",
+    "hourPillar": "时柱（天干地支，基于真太阳时）",
+    "zodiac": "星座名称",
+    "moonPhase": "月相名称"
+  },
+  "advice": "200字左右的命理建议",
+  "zodiacAdvice": "150字左右的星座运势建议",
+  "moonAdvice": "150字左右的月相指引建议"
+}
+
+请立即返回JSON结果（不要markdown标记）：`;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ];
+
+        console.log('发送八字分析请求...');
+        const data = await callAIAPI(apiUrl, apiKey, model, messages, 2000);
+
+        let responseText = data.choices[0].message.content.trim();
+        console.log('收到 AI 响应');
+
+        // 清理 markdown 标记
+        if (responseText.startsWith('```json')) {
+            responseText = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+        } else if (responseText.startsWith('```')) {
+            responseText = responseText.replace(/^```\s*/, '').replace(/```\s*$/, '');
+        }
+
+        // 提取 JSON
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            responseText = jsonMatch[0];
+        }
+
+        const analysisResult = JSON.parse(responseText);
+
+        // 验证必要字段
+        if (!analysisResult.bazi || !analysisResult.advice) {
+            throw new Error('AI 返回的数据格式不完整');
+        }
+
+        // 构建完整结果
+        const result = {
+            name: name,
+            gender: gender,
+            birthdate: birthdate,
+            birthtime: birthtime,
+            birthCity: birthCity,
+            location: locationInfo,
+            bazi: analysisResult.bazi,
+            advice: analysisResult.advice,
+            zodiacAdvice: analysisResult.zodiacAdvice || '暂无星座建议',
+            moonAdvice: analysisResult.moonAdvice || '暂无月相建议'
+        };
+
+        console.log('八字分析完成');
+        return result;
+
+    } catch (error) {
+        console.error('分析失败:', error);
+        throw new Error(`分析失败: ${error.message}`);
     }
 }
