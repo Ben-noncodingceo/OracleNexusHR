@@ -1,7 +1,7 @@
 {
   "name": "bazi-fortune-calculator",
   "version": "1.0.0",
-  "description": "八字命理分析系统 - 基于AI的生辰八字、星座和月相分析工具",
+  "description": "八字命理分析系统 v1.0.0 - 基于AI的生辰八字、星座和月相分析工具。支持性别差异化分析、城市智能识别、真太阳时精确计算。",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
