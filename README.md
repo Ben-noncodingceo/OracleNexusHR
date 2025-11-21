@@ -2,9 +2,28 @@
 
 一个完全基于 AI 的生辰八字、星座和月相分析工具，使用人工智能进行命理运算和专业分析。
 
+## 🌐 在线部署
+
+### 快速部署到 Vercel（推荐）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/OracleNexusHR)
+
+**5分钟免费部署**：
+1. 点击上方按钮
+2. 用 GitHub 登录 Vercel
+3. 点击 "Deploy"
+4. 获得免费域名（xxx.vercel.app）
+
+详细部署指南请查看 [部署指南.md](./部署指南.md)
+
+> **注意**：GitHub Pages 不支持 Node.js 后端，请使用 Vercel、Render 或 Railway 部署。
+
 ## ✨ 功能特点
 
 - 🎴 **AI 八字计算**：由 AI 精确计算年柱、月柱、日柱、时柱（天干地支）
+- 👤 **性别识别**：根据性别调整命理分析侧重点（男命/女命）
+- 📍 **城市定位**：AI 自动识别城市省份和经纬度
+- ⏰ **真太阳时**：基于地理位置精确计算真太阳时，时柱更准确
 - ⭐ **星座分析**：AI 根据出生日期判断星座并提供运势建议
 - 🌙 **月相分析**：AI 计算出生时的月相并提供能量指引
 - 🤖 **完全 AI 驱动**：所有命理运算和分析均由 AI 完成，更专业准确
