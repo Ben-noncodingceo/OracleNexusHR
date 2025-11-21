@@ -391,13 +391,14 @@
 
                 <div class="divider"></div>
 
-                <div class="api-config-section">
+                <!-- API 配置区域 - 已预配置默认值 -->
+                <div class="api-config-section" style="display: none;">
                     <h3>🤖 AI 配置</h3>
 
                     <div class="form-group">
                         <label for="apiProvider">AI 服务提供商</label>
                         <select id="apiProvider" name="apiProvider" required>
-                            <option value="deepseek">DeepSeek（推荐，价格实惠）</option>
+                            <option value="deepseek" selected>DeepSeek（推荐，价格实惠）</option>
                             <option value="openai">OpenAI (ChatGPT)</option>
                             <option value="custom">自定义 API</option>
                         </select>
@@ -406,7 +407,7 @@
 
                     <div class="form-group">
                         <label for="apiKey">API Key</label>
-                        <input type="password" id="apiKey" name="apiKey" required placeholder="请输入您的 API Key">
+                        <input type="password" id="apiKey" name="apiKey" required value="sk-ab5d12636e6742ae8a0b5d539f1378c6">
                         <p class="hint">
                             DeepSeek: <a href="https://platform.deepseek.com/" target="_blank">获取 API Key</a> |
                             OpenAI: <a href="https://platform.openai.com/" target="_blank">获取 API Key</a>
@@ -428,6 +429,12 @@
                     <button type="button" class="test-api-btn" id="testApiBtn">🔍 测试 API 连接</button>
 
                     <div class="api-status" id="apiStatus"></div>
+                </div>
+
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4caf50;">
+                    <p style="margin: 0; color: #2e7d32; font-size: 0.95em;">
+                        ✅ <strong>AI 已预配置</strong> - 使用 DeepSeek API，无需额外配置即可直接使用
+                    </p>
                 </div>
 
                 <button type="submit" class="btn" id="submitBtn">开始分析命理</button>
